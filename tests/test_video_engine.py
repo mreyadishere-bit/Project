@@ -10,7 +10,6 @@ from unittest.mock import patch
 
 import cv2
 import numpy as np
-import torch  # Import before worker threads for reliable isolated tests.
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from video_engine import VideoJob, VideoSettings, motion_direction, frame_counts
@@ -45,6 +44,9 @@ class FakeResult:
     def plot(self):
         return self.frame
 
+
+fake_torch = types.ModuleType("torch")
+fake_torch.cuda = types.SimpleNamespace(is_available=lambda: False)
 
 class FakeYOLO:
     names = {0: "person", 2: "car", 9: "traffic light"}
@@ -84,7 +86,7 @@ class VideoTests(unittest.TestCase):
                 create_video(clip, frames=130, fps=2)
                 fake = types.ModuleType("ultralytics")
                 fake.YOLO = FakeYOLO
-                with patch.dict(sys.modules, {"ultralytics": fake}):
+                with patch.dict(sys.modules, {"ultralytics": fake, "torch": fake_torch}):
                     job = VideoJob(str(clip), VideoSettings(analysis_fps=1), label="test")
                     job._thread.join(timeout=20)
                 snap = job.snapshot()
@@ -111,7 +113,7 @@ class VideoTests(unittest.TestCase):
                     def release(self): pass
                 fake = types.ModuleType("ultralytics")
                 fake.YOLO = FakeYOLO
-                with patch.dict(sys.modules, {"ultralytics": fake}), patch("video_engine.cv2.VideoCapture", return_value=MissingCamera()):
+                with patch.dict(sys.modules, {"ultralytics": fake, "torch": fake_torch}), patch("video_engine.cv2.VideoCapture", return_value=MissingCamera()):
                     job = VideoJob(0, VideoSettings())
                     job._thread.join(timeout=10)
                     self.assertEqual(job.snapshot()["status"], "error")
