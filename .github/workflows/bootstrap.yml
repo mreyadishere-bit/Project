@@ -17,7 +17,7 @@ jobs:
           cat bootstrap/part*.b64 | base64 -d > /tmp/smartroad.tar.xz
           echo "3fb732d7b8907887dfa7a7b0090213902ab427cdbd98ff5010bd4e48061f15b8  /tmp/smartroad.tar.xz" | sha256sum -c -
           tar -xJf /tmp/smartroad.tar.xz -C .
-          rm -rf bootstrap .github/workflows/bootstrap.yml
+          rm -rf bootstrap .github/workflows/bootstrap.yml .github/workflows/ci.yml
           python -m compileall -q app.py video_ui.py video_engine.py analysis.py database.py receiver.py routes.py weather.py
       - name: Commit project files
         shell: bash
