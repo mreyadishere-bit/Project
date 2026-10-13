@@ -1,3 +1,5 @@
+> **Smart Road AI VNext:** The hosted results now include timestamped pedestrian/vehicle review events, a true interactive 3D signal-controlled crossing concept, same-demand modeled tradeoffs, optional precision/recall evaluation with manual labels, and PDF evidence reports. These are research tools, NOT a source-exact digital twin or validated accident reduction. See [implementation status and verification](VNEXT_IMPLEMENTATION.md).
+
 # Smart Road AI
 
 **Road intelligence from video, with evidence before conclusions.**
