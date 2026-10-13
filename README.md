@@ -4,6 +4,53 @@
 
 [Live Streamlit research demo](https://project-imqe2wriheusspmbnmgyxg.streamlit.app/) · Python 3.11 · Streamlit · Ultralytics YOLO · OpenCV
 
+## Road Studio V6 · Evidence-first recommendations & Blender-style 3D (2026-10-13)
+
+**Deployed entry point remains the minimal upload → Analyze road → results page.**
+You do not need to choose AI settings. The previous floating-cube/photo overlay
+renderer is retired from the visible workflow.
+
+### Road recommendations
+- `road_advice.py` reads aggregate per-frame detections plus a bounded list
+  of actual per-track motion changes. Every suggestion exposes exactly what
+  the model observed, why this might merit a road engineering review, an
+  intervention to **investigate**, and what must be verified on site.
+- A filename such as `highway.mov` is only a **context hint**, not reliable
+  road classification. The software never automatically designs a pedestrian
+  crossing from 2D box overlap or claims a speed limit from pixel movement.
+  Highways with possible pedestrian detections trigger an access review, not
+  a marked road crossing.
+- Insufficient evidence results in a data-quality recommendation, not fake
+  crash, congestion or travel-time improvements.
+
+### Actual interactive low-poly 3D geometry
+- `road_world3d.py` renders **real Three.js 3D meshes**: two curved
+  carriageways, a central median, lane markings, guardrails, roadsides,
+  low-poly trees, lamps and class-dependent car/truck/bus/motorcycle/bicycle
+  meshes with bodies, roofs and wheels. Includes physically illuminated
+  shading, simple shadows and light fog.
+- Both **Observed** and **Proposed** views use the same modeled 3D
+  environment and synchronized orbitable 3D perspective cameras. Switch
+  between *Source-inspired*, *Orbit 3D*, and *Top view*, pause, restart,
+  scrub the recorded observation timeline, or alter a what-if speed ratio.
+- Traffic agents use time-indexed original bounding box footpoints, mapped
+  **approximately** to a 3D divided road. This source camera mapping is
+  intentionally illustrative, not a georeferenced digital twin. Exact lane
+  widths, geometry, hidden infrastructure, masses and camera parameters
+  are not recoverable from one monocular recording.
+- Evidence-based suggestions initialize only supportable visual changes
+  (e.g. enhanced lane marking visibility when trajectory flags warrant a
+  review); other concept presets are labeled **unverified** and do not claim
+  numerical benefit. No user-facing fake predicted crash reductions.
+
+### Verification
+- CI tests cover no automatic highway crosswalk, no unmeasured speed-limit
+  recommendations, insufficient-evidence fallback, actual CSV trajectory
+  aggregation, and JavaScript syntax/mesh construction references.
+- Passing software tests does **not** validate the model's traffic
+  detection precision or the approximate 3D alignment with a particular
+  camera. That needs annotated sample footage and surveyed scene geometry.
+
 ## V5.1 CPU performance and traffic detection QA (2026-10-13)
 
 This update is based on visible issues in the same 18-second elevated
