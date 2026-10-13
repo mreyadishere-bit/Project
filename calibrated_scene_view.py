@@ -35,7 +35,7 @@ video,canvas{display:block;width:100%;height:100%;object-fit:contain}
 </head><body>
 <div class="bar"><div><h3>Surveyed road — source-aligned reconstruction</h3>
 <div class="muted">Observed trajectories · Surveyed flat road patch · Approximate camera intrinsics</div></div>
-<div class="tools"><select id="mode" aria-label="Observed versus hypothetical" style="padding:9px;border-radius:9px;border:1px solid #d3e0ec"><option value="observed">Observed tracked movement</option><option value="signal">Hypothetical signal + pedestrian crossing</option></select><button id="pause">Play / Pause</button><button id="reset">Restart</button><button id="sourceview">Source view</button><button id="top">Top view</button></div></div>
+<div class="tools"><select id="mode" aria-label="Observed versus hypothetical" style="padding:9px;border-radius:9px;border:1px solid #d3e0ec"><option value="observed">Observed tracked movement</option><option value="signal">Hypothetical signal + pedestrian crossing</option></select><button id="pause">Play / Pause</button><button id="reset">Restart</button><button id="sourceview">Source view</button><button id="focus">Focus on road</button><button id="top">Top view</button></div></div>
 <div class="grid">
 <div class="card"><div class="heading">01 · Unmodified real recording</div>
 <div class="viewport"><video controls playsinline preload="metadata" id="source" src="__VIDEO__"></video></div>
@@ -104,7 +104,7 @@ try{
  const texture=new T.TextureLoader().load(metric.texture);
  texture.colorSpace=T.SRGBColorSpace;
  const road=new T.Mesh(new T.PlaneGeometry(metric.width_m,metric.length_m),
-   new T.MeshStandardMaterial({map:texture,side:T.DoubleSide,roughness:.96}));
+   new T.MeshBasicMaterial({map:texture,side:T.DoubleSide}));
  road.rotation.x=Math.PI/2;road.position.set(metric.width_m/2,0,-metric.length_m/2);
  scene.add(road);
  const border=new T.LineLoop(new T.BufferGeometry().setFromPoints([
@@ -319,10 +319,17 @@ try{
    sourceCamera.updateMatrixWorld(true);
    validateProjection();
  };
+ document.getElementById("focus").onclick=()=>{
+   useOrbit=true;controls.enabled=true;
+   camera.up.set(0,1,0);
+   camera.position.set(metric.width_m*1.6,Math.max(16,metric.length_m*.78),
+                       -metric.length_m/2+metric.length_m*.85);
+   controls.target.copy(center);controls.update();
+ };
  document.getElementById("top").onclick=()=>{
    useOrbit=true;controls.enabled=true;
    camera.up.set(0,0,-1);
-   camera.position.set(metric.width_m/2,Math.max(28,metric.length_m*1.15),-metric.length_m/2+.01);
+   camera.position.set(metric.width_m/2,Math.max(45,metric.length_m*1.75),-metric.length_m/2+.01);
    controls.target.copy(center);controls.update();
  };
  document.getElementById("pause").onclick=()=>{
