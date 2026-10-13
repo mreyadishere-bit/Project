@@ -79,6 +79,25 @@ def show_results(job,snap):
                 st.markdown(f"**{i}. Possible shared-space interaction · {event['video_second']:.1f}s**")
                 st.caption(f"Sampled window {event['start_second']:.1f}–{event['end_second']:.1f}s · {event['frame_count']} supporting frames · IDs {event['person_track']} and {event['vehicle_track']}")
                 st.write(event["explanation"])
+                if st.button(f"Watch supporting video at {event['video_second']:.1f}s",
+                             key=f"review_event_{job.id}_{i}"):
+                    st.session_state["review_timestamp_"+job.id]=max(0,int(event["video_second"]-2))
+        chosen_time=st.session_state.get("review_timestamp_"+job.id)
+        if chosen_time is not None:
+            from video_comparison import source_video_path
+            original=source_video_path(job)
+            proxy=job.folder / "comparison_original.mp4"
+            if proxy.is_file() and proxy.stat().st_size>100:
+                st.video(str(proxy),start_time=chosen_time,format="video/mp4")
+                st.caption("Unmodified browser-compatible source-video copy, starting near the selected observation.")
+            elif original and original.suffix.lower()==".mp4":
+                st.video(str(original),start_time=chosen_time,format="video/mp4")
+                st.caption("Original footage starting near the selected observation.")
+            elif job.video_file.is_file():
+                st.video(str(job.video_file),start_time=chosen_time,format="video/mp4")
+                st.caption("Analyzed-video export with AI annotations, starting near the selected observation. This is not the unmodified original.")
+            else:
+                st.warning("This event has a valid timestamp, but no browser-playable video preview is available.")
     else:
         st.info("No sustained pedestrian–vehicle image-overlap was established from the tracked frames. This does not mean the road is safe; the AI may have missed objects or the video may lack enough coverage.")
 
