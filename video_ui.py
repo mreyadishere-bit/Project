@@ -270,7 +270,7 @@ def video_stage(snap, job):
                 if snap["error"]:
                     st.error(snap["error"])
                 if snap["status"] in {"starting", "loading model", "running"}:
-                    if not snap["is_camera"]:
+                    if not snap["is_live"]:
                         if st.button("Resume" if snap["paused"] else "Pause", use_container_width=True, key="sr_pause"):
                             job.resume() if snap["paused"] else job.pause()
                             st.rerun(scope="fragment")
@@ -379,7 +379,7 @@ def exports_view(job, snap, hosted):
         st.info("Analyze a video first. Frame-level observations and diagnostic events are written incrementally to CSV.")
         return
     if snap["status"] in {"running", "starting", "loading model"}:
-        st.info("Files are being written. Stop or finish the job before downloading a complete result.")
+        st.info("This session is live. Counts and events update in Workspace/Intelligence. The complete files become downloadable when the run stops.")
         return
     if snap["status"] == "error":
         st.warning("The session encountered an error. Any partial CSV files are unverified.")
@@ -401,6 +401,9 @@ def exports_view(job, snap, hosted):
         "max_visible_vehicles": snap["max_vehicles"],
         "max_visible_pedestrians": snap["max_people"],
         "track_ids_observed": snap["unique_tracks"],
+        "sampled_frame_class_totals": snap.get("detected_class_totals", {}),
+        "frames_with_detected_objects": snap.get("detected_frames", 0),
+        "source_kind": snap.get("source_kind", "file"),
         "mean_apparent_motion_px_s": round(snap.get("mean_apparent_speed", 0), 2),
         "mean_calibrated_speed_kmh": (
             round(snap.get("mean_calibrated_speed", 0), 2)
@@ -464,10 +467,8 @@ def video_tab():
     selection = st.radio("Section", pages, horizontal=True, key="sr_main_tab",
                          label_visibility="collapsed")
     if selection == "Workspace":
-        if not active:
+        if not active and not (snap and snap["status"] in {"completed", "stopped", "ended", "error"}):
             source_and_settings(hosted, active)
-        else:
-            st.markdown('<span class="sr-tag blue">SESSION IN PROGRESS · SOURCE SETTINGS LOCKED</span>', unsafe_allow_html=True)
 
         @st.fragment(run_every=1.0 if active else None)
         def monitor():
