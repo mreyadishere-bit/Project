@@ -171,22 +171,27 @@ class LiveWorkerTests(unittest.TestCase):
                           return_value=("https://stream.example.com/live.m3u8", "Public Road")),
                     patch("live_decoder.FFmpegLiveCapture", side_effect=Capture),
                 ):
-                    job = VideoJob("https://youtu.be/jfKfPfyJRdk", VideoSettings(), source_kind="youtube")
-                    try:
-                        deadline = time.monotonic() + 5
-                        while job.snapshot()["analyzed_frames"] < 2 and time.monotonic() < deadline:
-                            time.sleep(.05)
-                        self.assertGreaterEqual(job.snapshot()["analyzed_frames"], 2,
-                                                job.snapshot()["error"])
-                        self.assertEqual(job.snapshot()["source_kind"], "youtube")
-                        with self.assertRaisesRegex(RuntimeError, "already using"):
-                            VideoJob("https://youtu.be/jfKfPfyJRdk", VideoSettings(),
-                                     source_kind="youtube")
-                    finally:
-                        job.stop()
-                        job._thread.join(timeout=10)
-                    self.assertEqual(job.snapshot()["status"], "stopped", job.snapshot()["error"])
-                    self.assertGreaterEqual(job.snapshot()["detected_frames"], 2)
+                    for src, kind in (
+                        ("https://youtu.be/jfKfPfyJRdk", "youtube"),
+                        ("caltrans-sacramento-i5", "public_live"),
+                        ("caltrans-district7-cctv101", "public_live"),
+                    ):
+                        with self.subTest(source=kind, camera=src):
+                            job = VideoJob(src, VideoSettings(), source_kind=kind)
+                            try:
+                                deadline = time.monotonic() + 5
+                                while job.snapshot()["analyzed_frames"] < 2 and time.monotonic() < deadline:
+                                    time.sleep(.05)
+                                self.assertGreaterEqual(job.snapshot()["analyzed_frames"], 2,
+                                                        job.snapshot()["error"])
+                                self.assertEqual(job.snapshot()["source_kind"], kind)
+                                with self.assertRaisesRegex(RuntimeError, "already using"):
+                                    VideoJob(src, VideoSettings(), source_kind=kind)
+                            finally:
+                                job.stop()
+                                job._thread.join(timeout=10)
+                            self.assertEqual(job.snapshot()["status"], "stopped", job.snapshot()["error"])
+                            self.assertGreaterEqual(job.snapshot()["detected_frames"], 2)
             finally:
                 video_engine.OUTPUTS = previous_output
 
