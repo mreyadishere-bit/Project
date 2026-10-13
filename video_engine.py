@@ -15,13 +15,15 @@ import time
 import uuid
 
 import cv2
+from scene_intelligence import image_motion, scene_diagnostics, diagnostic_events
 
 BASE = Path(__file__).resolve().parent
 OUTPUTS = BASE / "outputs"
 ROAD_CLASSES = ("person", "car", "motorcycle", "bus", "truck", "bicycle", "traffic light", "stop sign")
 VEHICLES = {"car", "motorcycle", "bus", "truck", "bicycle"}
 SUMMARY_FIELDS = ["video_second", "frame_number", "people", "vehicles", "cars", "buses", "trucks", "motorcycles", "bicycles", "traffic_lights", "stop_signs", "all_objects"]
-OBJECT_FIELDS = ["video_second", "frame_number", "track_id", "class", "confidence", "x1", "y1", "x2", "y2", "center_x", "center_y", "direction", "observed_at_utc"]
+OBJECT_FIELDS = ["video_second", "frame_number", "track_id", "class", "confidence", "x1", "y1", "x2", "y2", "center_x", "center_y", "direction", "image_motion_px_s", "calibrated_speed_kmh", "observed_at_utc"]
+EVENT_FIELDS = ["video_second", "event_type", "title", "description", "level"]
 
 
 def motion_direction(previous: tuple[float, float] | None, current: tuple[float, float], threshold=8.0):
@@ -98,6 +100,7 @@ class VideoSettings:
     analysis_fps: int = 5   # file frames analysed per video second (approx.)
     all_classes: bool = False
     save_video: bool = False
+    meters_per_pixel: float | None = None   # explicit approximate camera calibration
 
 
 class VideoJob:
@@ -119,6 +122,7 @@ class VideoJob:
         self.summary_file = self.folder / "frames.csv"
         self.objects_file = self.folder / "objects.csv"
         self.video_file = self.folder / "annotated.mp4"
+        self.events_file = self.folder / "events.csv"
         self._stop = threading.Event()
         self._pause = threading.Event()
         self._lock = threading.Lock()
@@ -138,6 +142,13 @@ class VideoJob:
         self.recent_frames: deque[dict] = deque(maxlen=180)
         self.recent_objects: deque[dict] = deque(maxlen=80)
         self.processing_fps = 0.0
+        self.scene = {}
+        self.recent_events: deque[dict] = deque(maxlen=100)
+        self.total_events = 0
+        self.motion_samples = 0
+        self.mean_apparent_speed = 0.0
+        self.mean_calibrated_speed = 0.0
+        self.calibrated_speed_samples = 0
         self.device = "not loaded"
         self.started_at = time.time()
         self.finished_at = None
@@ -166,6 +177,11 @@ class VideoJob:
                 "max_people": self.max_people, "unique_tracks": len(self.unique_track_ids),
                 "recent_frames": list(self.recent_frames), "recent_objects": list(self.recent_objects),
                 "processing_fps": self.processing_fps, "device": self.device,
+                "scene": dict(self.scene), "recent_events": list(self.recent_events),
+                "total_events": self.total_events, "mean_apparent_speed": self.mean_apparent_speed,
+                "mean_calibrated_speed": self.mean_calibrated_speed,
+                "calibrated_speed_samples": self.calibrated_speed_samples,
+                "calibrated": self.settings.meters_per_pixel is not None,
                 "paused": self._pause.is_set(), "is_camera": self.is_camera,
                 "folder": str(self.folder), "finished_at": self.finished_at,
             }
@@ -209,11 +225,15 @@ class VideoJob:
             last_camera_version = 0
             live_start = time.monotonic()
             previous_points: dict[int, tuple[float, float]] = {}
-            with self.summary_file.open("w", encoding="utf-8-sig", newline="") as summaries, self.objects_file.open("w", encoding="utf-8-sig", newline="") as objects:
+            previous_motion: dict[int, tuple[float, float, float]] = {}
+            last_emitted: dict[str, float] = {}
+            with self.summary_file.open("w", encoding="utf-8-sig", newline="") as summaries, self.objects_file.open("w", encoding="utf-8-sig", newline="") as objects, self.events_file.open("w", encoding="utf-8-sig", newline="") as event_stream:
                 summary_csv = csv.DictWriter(summaries, fieldnames=SUMMARY_FIELDS)
                 object_csv = csv.DictWriter(objects, fieldnames=OBJECT_FIELDS)
                 summary_csv.writeheader()
                 object_csv.writeheader()
+                event_csv = csv.DictWriter(event_stream, fieldnames=EVENT_FIELDS)
+                event_csv.writeheader()
                 while not self._stop.is_set():
                     if self._pause.is_set():
                         time.sleep(0.12)
@@ -247,6 +267,8 @@ class VideoJob:
                                           imgsz=self.settings.image_size, conf=self.settings.confidence,
                                           device=device, verbose=False)[0]
                     detections = []
+                    apparent_speeds = []
+                    calibrated_speeds = []
                     now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
                     if tracked.boxes is not None and len(tracked.boxes):
                         xyxy = tracked.boxes.xyxy.cpu().tolist()
@@ -258,28 +280,43 @@ class VideoJob:
                             x1, y1, x2, y2 = [round(float(v), 1) for v in bounds]
                             center = ((x1 + x2) / 2, (y1 + y2) / 2)
                             direction = motion_direction(previous_points.get(track_id), center) if track_id is not None else "untracked"
+                            image_px_s, calibrated_kmh = (None, None)
                             if track_id is not None:
+                                foot = ((x1 + x2) / 2, y2)
+                                image_px_s, calibrated_kmh = image_motion(previous_motion.get(track_id), foot, seconds, self.settings.meters_per_pixel)
                                 previous_points[track_id] = center
+                                previous_motion[track_id] = (foot[0], foot[1], seconds)
+                            if image_px_s is not None:
+                                apparent_speeds.append(image_px_s)
+                            if calibrated_kmh is not None and class_name in VEHICLES:
+                                calibrated_speeds.append(calibrated_kmh)
                             detections.append({
                                 "video_second": round(seconds, 2), "frame_number": frame_no,
                                 "track_id": "" if track_id is None else int(track_id),
                                 "class": class_name, "confidence": round(float(confidence), 3),
                                 "x1": x1, "y1": y1, "x2": x2, "y2": y2,
                                 "center_x": round(center[0], 1), "center_y": round(center[1], 1),
-                                "direction": direction, "observed_at_utc": now_iso,
+                                "direction": direction, "image_motion_px_s": image_px_s,
+                                "calibrated_speed_kmh": calibrated_kmh,
+                                "observed_at_utc": now_iso,
                             })
                     counts = frame_counts(detections)
+                    diag = scene_diagnostics(frame, detections, counts)
+                    new_events = diagnostic_events(diag, seconds, last_emitted)
+                    event_csv.writerows(new_events)
                     entry = {"video_second": round(seconds, 2), "frame_number": frame_no, **counts}
                     summary_csv.writerow(entry)
                     object_csv.writerows(detections)
                     if frame_no % 60 == 0:
                         summaries.flush()
                         objects.flush()
+                        event_stream.flush()
                     # Prune positions of inactive tracks, without resetting unique-ID count.
                     active_ids = {int(d["track_id"]) for d in detections if d["track_id"] != ""}
                     for track_id in list(previous_points):
                         if track_id not in active_ids:
                             del previous_points[track_id]
+                            previous_motion.pop(track_id, None)
                     annotated = tracked.plot()
                     if self.settings.save_video and not self.is_camera:
                         if writer is None:
@@ -301,6 +338,17 @@ class VideoJob:
                         self.analyzed_frames += 1
                         self.video_second = seconds
                         self.detected_now = counts
+                        self.scene = {k: v for k, v in diag.items() if k != "proximity_pairs"}
+                        self.total_events += len(new_events)
+                        self.recent_events.extend(new_events)
+                        if apparent_speeds:
+                            samples = len(apparent_speeds)
+                            self.mean_apparent_speed = (self.mean_apparent_speed * self.motion_samples + sum(apparent_speeds)) / (self.motion_samples + samples)
+                            self.motion_samples += samples
+                        if calibrated_speeds:
+                            samples = len(calibrated_speeds)
+                            self.mean_calibrated_speed = (self.mean_calibrated_speed * self.calibrated_speed_samples + sum(calibrated_speeds)) / (self.calibrated_speed_samples + samples)
+                            self.calibrated_speed_samples += samples
                         self.max_vehicles = max(self.max_vehicles, counts["vehicles"])
                         self.max_people = max(self.max_people, counts["people"])
                         self.unique_track_ids.update(active_ids)
