@@ -12,7 +12,7 @@ from pathlib import Path
 
 def build_scene(job, snapshot, max_points=30000, max_tracks=500):
     csvpath=Path(job.objects_file)
-    reference=Path(job.reference_frame_file)
+    reference=Path(getattr(job,"reference_frame_file",""))
     if not csvpath.is_file() or not reference.is_file():
         raise ValueError("No analyzed video / reference frame found. Run video analysis first.")
     w=int(snapshot.get("frame_width") or 0)
