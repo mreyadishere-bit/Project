@@ -10,7 +10,11 @@ from weather import current_weather
 
 HOSTED = os.environ.get("SMART_ROAD_HOSTED", "0") == "1"
 
-st.set_page_config(page_title="Smart Road | Prototype", page_icon="🚦", layout="wide")
+st.set_page_config(page_title="Smart Road AI | Road Intelligence Lab", page_icon="🛣️", layout="wide")
+if HOSTED:
+    from video_ui import video_tab
+    video_tab()
+    st.stop()
 if not HOSTED:
     init_db()
 
@@ -23,11 +27,7 @@ div[data-testid="stMetric"] {border: 1px solid #dce3e9; border-radius: 14px; pad
 
 st.title("🚦 Smart Road — Video Intelligence v2")
 st.caption("تحليل فيديو طويل وتتبّع مباشر محليًا + بلاغات وخريطة وطقس وحساسات تجريبية")
-if HOSTED:
-    st.warning("هذه نسخة ويب تجريبية عامة بدون تسجيل دخول؛ لا ترفع فيديوهات خاصة أو حساسة. الفيديوهات الطويلة جدًا والبث من الكاميرا المحلية تحتاج نسخة سطح المكتب أو خادم معالجة مخصص.")
-    from video_ui import video_tab
-    video_tab()
-    st.stop()
+
 st.info("⚠️ هذه نسخة بحثية تجريبية، وليست نظام إنذار معتمدًا. مؤشر الفيديو لا يمثل احتمال وقوع حادث، ولا يُستخدم لاتخاذ قرار قيادة.")
 
 with st.sidebar:
