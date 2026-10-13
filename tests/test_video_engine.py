@@ -128,7 +128,7 @@ class VideoTests(unittest.TestCase):
                     job = VideoJob(0, VideoSettings())
                     job._thread.join(timeout=10)
                     self.assertEqual(job.snapshot()["status"], "error")
-                    self.assertIn("Cannot open source", job.snapshot()["error"])
+                    self.assertIn("Cannot open video or camera", job.snapshot()["error"])
             finally:
                 video_engine.OUTPUTS = old
 
