@@ -109,7 +109,7 @@ def show_results(job,snap):
     with st.expander("Measure the AI's accuracy against labeled frames (optional)"):
         st.write("Actual precision, recall and F1 require manually labeled ground-truth boxes. Unlabeled video frames are excluded completely.")
         st.download_button("Download labeling template",
-                           "frame_number,class,x1,y1,x2,y2\\n",
+                           "frame_number,class,x1,y1,x2,y2\n",
                            file_name="road-ground-truth-template.csv",
                            mime="text/csv",key="truth_template_"+job.id)
         st.caption("Add one row per ground-truth object. Use class 'none' for a checked frame containing no relevant objects. Use pixel coordinates from the original video and matching frame_number values.")
@@ -142,6 +142,17 @@ def show_results(job,snap):
                 "review_needed":"Single-camera AI can miss vehicles and cannot establish metric speed or 3D dimensions without calibration.",
                 "context":story["context"],"kinematic_evidence":story["measurements"],
                 "interaction_review_candidates":interaction_events}
+        from road_report_pdf import build_road_pdf
+        try:
+            pdf_bytes=build_road_pdf(
+                snap,story,interaction_events,
+                st.session_state.get("control_"+job.id+"_results")
+            )
+            st.download_button("Download professional road review (PDF)",pdf_bytes,
+                               file_name="smart-road-evidence-review.pdf",
+                               mime="application/pdf",key="pdf_report_"+job.id)
+        except (ValueError,TypeError,KeyError,OSError) as error:
+            st.warning("PDF report couldn't be generated: "+str(error))
         st.download_button("Full report (JSON)",json.dumps(report,ensure_ascii=False,indent=2),
                            file_name="road-report.json",mime="application/json")
         for path in (job.objects_file,job.crossings_file,job.summary_file,job.events_file):
