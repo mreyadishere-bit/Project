@@ -26,6 +26,42 @@
 - Potholes, cracks, puddles and road damage require dedicated datasets/models and independent evaluation; **the current pretrained detector does not find them**.
 - The public hosted app has no account-level access control. **Never upload sensitive/identifiable footage.**
 
+
+## Free actual live traffic cameras (no YouTube)
+
+Hosted demo: open **Workspace → Free Live Traffic Cameras**. Pick one of the
+agency-operated Caltrans HLS feeds, click **Check first video frame**, and wait
+for a real decoded image. Then click **Start analyzing**. Results refresh in the
+workspace as frames arrive. No YouTube cookies, developer API tokens, or paid
+camera service is required.
+
+**Verified in GitHub Actions (2026-10-13):**
+
+| Source | Provider | Live playlist status | Decoded frame |
+| --- | --- | --- | --- |
+| Sacramento — I-5 Pocket Rd | California DOT (Caltrans) | HTTP 200, HLS | Yes (JPEG produced by FFmpeg) |
+| Southern California — D7 CCTV-101 | California DOT (Caltrans) | HTTP 200, HLS | Yes (JPEG produced by FFmpeg) |
+
+This is an *availability spot-check*, not a guarantee the same network route
+works from Streamlit Community Cloud or that a broadcast stays online. The
+built-in **Check first video frame** button verifies the connection from the
+actual app server before GPU/CPU model loading. Caltrans cameras are free to
+view and accessible through the [official live camera directory](https://cwwp2.dot.ca.gov/vm/streamlist.htm);
+the [agency conditions of use](https://dot.ca.gov/conditions-of-use) apply.
+Only counters, analysis metadata and temporary previews are retained; do not
+archive or republish agency camera footage without confirming permission.
+Seattle DOT streams were not used as ready-to-run defaults because they timed
+out during the test.
+
+### If the camera is not reachable
+
+1. Use **Check first video frame** to distinguish network/decoder failure
+   from YOLO errors. Select the other official camera if the first fails.
+2. Use a permitted recorded video in **Upload video** for consistent,
+   repeatable testing regardless of external live availability.
+3. Live camera processing on shared free CPU may skip frames and fall behind;
+   a dedicated inference worker is needed for predictable 24/7 performance.
+
 ## Local quick start
 
 Windows: run `setup_windows.bat` once, then `run_windows.bat`.
