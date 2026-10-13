@@ -149,7 +149,7 @@ class LiveWorkerTests(unittest.TestCase):
             def __init__(self, model): pass
             def track(self, frame, **kwargs): return [Result()]
         class Capture:
-            def __init__(self, url): self.closed = False
+            def __init__(self, url, **kwargs): self.closed = False
             def isOpened(self): return True
             def set(self, *args): return True
             def get(self, prop): return 30.0
