@@ -12,6 +12,10 @@ page.on("pageerror",e=>errors.push(e.message));
 try{
  await page.goto("http://127.0.0.1:8123/survey.html",{waitUntil:"domcontentloaded"});
  await page.locator("#view canvas").waitFor({state:"visible",timeout:45000});
+ await page.waitForFunction(()=>{
+   const source=document.querySelector("#source");
+   return source?.readyState>=1&&source.videoWidth===960&&source.duration>4;
+ },{timeout:25000});
  await page.waitForFunction(()=>document.querySelector("#loading")?.hidden===true,
                             {timeout:45000});
  const stats=await page.locator("#stats").textContent();
@@ -31,6 +35,9 @@ try{
  assert.match(scenario,/HYPOTHETICAL/,"Surveyed road must show an optional functional signal concept");
  assert.match(scenario,/simulated vehicles/,"Simulated traffic must stay separate from observed tracks");
  await page.locator("#mode").selectOption("observed");
+ await page.locator("#focus").click();
+ await page.waitForTimeout(250);
+ await page.screenshot({path:"surveyed-road-focus.png",fullPage:true});
  await page.locator("#top").click();
  await page.waitForTimeout(350);
  await page.screenshot({path:"surveyed-road-top.png",fullPage:true});
