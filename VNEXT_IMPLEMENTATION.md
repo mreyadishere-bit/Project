@@ -47,6 +47,43 @@ This release is a working research prototype, not a certified road safety assess
   top-view. This validates browser mechanics but NOT accuracy against the
   uploaded road.
 
+## 2026-10-14 — Camera-calibrated road and tracking
+
+- The normal zero-settings analyzer remains intact. After processing,
+  users can optionally enter four REAL image corners of a surveyed flat
+  road patch, measured width and length, and their known/estimated camera FOV.
+  Camera pose fitting and reprojection validate consistency, not absolute
+  physical survey accuracy.
+- Calibrated ground-plane positions and conservative vehicle speed samples
+  are recomputed from the existing video tracking CSV, without running YOLO
+  again. Results include uncertainty, bounded memory and reject motion
+  discontinuities and unreasonable values.
+- Optional automatic image-line/vanishing point hints help reviewers inspect
+  perspective. They never claim verified lanes, road type, road width or
+  metric 3D depth.
+- The true-scale surveyed viewer uses the source road image as a planar
+  texture, tracked vehicle world positions, real image camera pose, source,
+  top and orbit views. WebGL itself reprojects all four surveyed corners,
+  displays its reprojection error, and preserves a proper right-handed
+  OpenCV-to-Three coordinate transformation.
+- A working hypothetical crossing/signal can run ON the same surveyed road
+  patch, with independent modeled timing, controls, vehicle queues and
+  pedestrian movement. Agents are clipped to the measured road patch rather
+  than stretching the 140 m traffic model into 25 m.
+- Motion-gated global LAP data association helps maintain IDs without
+  dropping raw YOLO detector boxes. No accuracy improvement is claimed
+  without manually labeled ground truth.
+- Reviewer-surveyed metrics appear in the PDF and JSON exports.
+- CI tests analytical camera pose and reprojection, source WebGL scene,
+  optional signal, motion regression, and long-video bounded samples.
+
+NOT completed: Full monocular photogrammetry; automatic metric road geometry;
+verified safe crossing engineering design; physically calibrated near-miss TTC;
+fully benchmarked detector precision; full always-on, private, scalable
+multi-camera pipeline; production map, weather, route and moderated reports.
+An accurate road survey and camera intrinsics remain prerequisites for
+physically meaningful km/h and sizes.
+
 ## Browser verification procedure
 
 1. Upload and analyze video on the hosted site.
