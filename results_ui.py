@@ -290,6 +290,7 @@ def results_page(job, snap, hosted: bool):
             (job.summary_file,"Per-frame traffic observations"),
             (job.objects_file,"Full object observations and tracks"),
             (job.events_file,"Complete diagnostic event timeline"),
+            (getattr(job,"crossings_file",job.events_file),"Each counted vehicle passing the measurement line"),
         ]:
             if path.exists():
                 mb=path.stat().st_size/(1024*1024)
