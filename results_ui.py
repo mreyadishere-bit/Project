@@ -13,6 +13,13 @@ import streamlit as st
 from insight_engine import explain_video
 from simulation_ui import simulation_panel
 from reconstruction_ui import render_reconstruction
+from traffic_metrics import summarize_tracks, crossing_headways
+
+
+
+@st.cache_data(show_spinner=False,max_entries=12)
+def _cached_track_summary(path,modified_ns,size):
+    return summarize_tracks(path)
 
 
 def _section(title: str, subtitle: str = ""):
@@ -146,9 +153,31 @@ def results_page(job, snap, hosted: bool):
             [{"Class":name,"Passed":count} for name,count in crossing["passed_by_class"].items()]
         ).set_index("Class"),height=180)
     if snap.get("calibration"):
-        st.caption("Road-plane homography calibration was supplied; per-track estimated world positions, headings and km/h are included in the object CSV. These are NOT validated speed-enforcement measurements.")
+        st.caption("Road-plane calibration supplied: estimated ground positions, distances, headings, speeds and limited acceleration can be reviewed. Uncertainty from occlusion, frame sampling and unknown camera intrinsics remains.")
     else:
-        st.caption("Road-plane calibration not supplied; real-world speed/angle outputs are not claimed.")
+        st.caption("No surveyed calibration: do not interpret pixel motion as km/h or true road angles.")
+    with st.expander("Expert analysis · Every tracked vehicle (entire CSV)"):
+        if job.objects_file.exists():
+            with st.spinner("Summarizing recorded trajectories..."):
+                stat=job.objects_file.stat()
+                detail=_cached_track_summary(str(job.objects_file),stat.st_mtime_ns,stat.st_size)
+            data=pd.DataFrame(detail["tracks"])
+            st.caption(f"{len(data):,} tracked IDs and {detail['rows']:,} detection rows inspected across the analyzed video.")
+            if not data.empty:
+                fields=["track_id","class","frames","observed_seconds","mean_image_motion_px_s",
+                        "mean_surveyed_speed_kmh","max_surveyed_speed_kmh","heading_deg_last",
+                        "world_distance_m","max_observed_accel_mps2"]
+                st.dataframe(data[[name for name in fields if name in data.columns]],
+                             hide_index=True,use_container_width=True,height=330)
+            st.caption(detail["note"]+" A track ID is not necessarily one physical car. Mass and drag cannot be inferred from this video.")
+            gaps=crossing_headways(getattr(getattr(job,"crossings",None),"events",[]))
+            if gaps:
+                st.markdown("**Time between line-crossing events, by screen direction**")
+                st.dataframe(pd.DataFrame([{"direction":k,**v} for k,v in gaps.items()]),
+                             hide_index=True,use_container_width=True)
+                st.caption("Crossing time gaps are NOT verified following distances; vehicles may be in separate lanes.")
+        else:
+            st.info("Object data has not yet been recorded.")
 
     _section("02 · Final analyzed video","Play the result here, not in a separate file")
     if snap.get("video_ready") and job.video_file.exists():
