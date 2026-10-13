@@ -4,6 +4,29 @@
 
 [Live Streamlit research demo](https://project-imqe2wriheusspmbnmgyxg.streamlit.app/) · Python 3.11 · Streamlit · Ultralytics YOLO · OpenCV
 
+## Road Studio V6.2 · Smooth 3D replay and readiness states
+
+The observed source image and 3D scenario now show a **loading overlay** while
+Three.js initializes, its first frame renders, and the camera background image
+decodes. Failure is shown in the 3D panel rather than silently hiding the road.
+
+The tracked-vehicle replay has a discontinuity-aware smoothing stage:
+- Suppress isolated bad bounding-box samples without extrapolating hidden vehicles.
+- Split a tracking ID into separate observable segments if its box teleports
+  across the image or the observation gap is too long.
+- Fade vehicles in and out over a short interval at the edges of each observed
+  segment. Ignore single-frame/2-frame false tracks rather than popping in a
+  whole 3D car on an unreliable observation.
+- Use the **road/lane tangent** to orient 3D cars, rather than calculating
+  instantaneous yaw from noisy detector-box motion; smooth heading transitions.
+- The original HTML5 video remains the sole playback clock. These are
+  visualization and uncertainty-handling improvements, not claims of
+  scientifically measured vehicle dynamics or perfect tracking.
+
+Node-based regression tests run extracted source motion helpers, verifying
+the gap boundaries, isolated outlier smoothing, fade timing and stable
+opposing-lane 3D headings in actual Three.js projection tests.
+
 ## Road Studio V6.1 · Original footage versus synchronized 3D (2026-10-13)
 
 The Road Studio comparison is now **the actual uploaded video on the left**,
