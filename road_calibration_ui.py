@@ -49,6 +49,19 @@ def show_calibration(job,snapshot):
         st.error("Could not decode the source camera frame.")
         return
     h,w=image.shape[:2]
+    if st.checkbox("Show automatically detected perspective cues (unverified)",
+                   key="show_perspective_"+job.id):
+        from road_structure import suggest_perspective,draw_perspective_hints
+        hints=suggest_perspective(image)
+        st.image(draw_perspective_hints(image,hints),use_container_width=True,
+                 caption="Blue/orange marks are purely image-line hypotheses, not confirmed lanes or road boundaries.")
+        guess=hints["vanishing_point_candidate"]
+        if guess:
+            st.caption("Possible visual vanishing point: "+
+                       f"({guess['x_fraction']:.2f}, {guess['y_fraction']:.2f}) of frame. "
+                       "This does NOT establish scale or camera calibration.")
+        else:
+            st.caption("No reliable convergence point established. You can still enter surveyed points manually.")
     key="surveyed_road_"+job.id
     st.write("Enter the four **surveyed corners of one flat road rectangle** in the original frame. "
              "These are percentages of frame width/height. The model will reject impossible or "
