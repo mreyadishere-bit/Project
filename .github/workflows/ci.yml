@@ -16,6 +16,8 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
+      - name: Install FFmpeg for real HLS integration tests
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
