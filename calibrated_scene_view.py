@@ -79,6 +79,10 @@ try{
  );
  basis.invert().decompose(camera.position,camera.quaternion,new T.Vector3());
  const homePosition=camera.position.clone(),homeQuaternion=camera.quaternion.clone();
+ // OrbitControls defaults to upright camera and would strip source camera ROLL,
+ // shifting road landmarks despite mathematically correct PnP extrinsics.
+ const homeUp=new T.Vector3(0,1,0).applyQuaternion(homeQuaternion);
+ camera.up.copy(homeUp);
  const controls=new OrbitControls(camera,renderer.domElement);
  controls.enableDamping=true;
  const center=new T.Vector3(metric.width_m/2,0,-metric.length_m/2);
@@ -297,10 +301,12 @@ try{
  new ResizeObserver(resize).observe(view);resize();
  document.getElementById("sourceview").onclick=()=>{
    camera.position.copy(homePosition);camera.quaternion.copy(homeQuaternion);
+   camera.up.copy(homeUp);
    controls.target.copy(sourceTarget);controls.update();
    validateProjection();
  };
  document.getElementById("top").onclick=()=>{
+   camera.up.set(0,0,-1);
    camera.position.set(metric.width_m/2,Math.max(28,metric.length_m*1.15),-metric.length_m/2+.01);
    controls.target.copy(center);controls.update();
  };
