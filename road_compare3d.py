@@ -31,7 +31,7 @@ button:hover{background:#e9f2ff}
 .panelhead{padding:12px 15px;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .panelhead strong{font-size:13px}
 .panelhead span{color:#7a90a6;font-size:10px}
-.viewport{height:350px;position:relative;overflow:hidden;background:#d2e3eb}
+.viewport{aspect-ratio:16/9;position:relative;overflow:hidden;background:#d2e3eb}
 .viewport video,.viewport canvas{height:100%;width:100%;display:block;object-fit:contain}
 .viewport canvas{cursor:grab}
 .panelnote{padding:11px 15px;border-top:1px solid #e8edf3;color:#8290a2;min-height:54px;line-height:1.5;font-size:11px}
@@ -46,7 +46,7 @@ button:hover{background:#e9f2ff}
 .hint{padding:11px 2px;font-size:11px;color:#7c8da3;line-height:1.6}
 .warning{font-size:11px;color:#886d2e;background:#fff8e7;padding:11px 13px;border-radius:12px;line-height:1.6;margin-top:6px}
 .error{display:none;padding:14px;color:#b54737;background:#fff1ee;border-radius:12px}
-@media(max-width:710px){.shell{grid-template-columns:repeat(2,minmax(310px,1fr));overflow-x:auto;scroll-snap-type:x mandatory}.panel{scroll-snap-align:start}.viewport{height:260px}}
+@media(max-width:710px){.shell{grid-template-columns:repeat(2,minmax(310px,1fr));overflow-x:auto;scroll-snap-type:x mandatory}.panel{scroll-snap-align:start}.viewport{aspect-ratio:16/9}}
 </style>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 </head><body>
@@ -89,6 +89,11 @@ try {
  const {OrbitControls}=await import("three/addons/controls/OrbitControls.js");
  const data=JSON.parse(document.getElementById("sceneData").textContent);
  const video=document.getElementById("sourceVideo");
+ const frameWidth=Number(data.originalDimensions?.[0])||960;
+ const frameHeight=Number(data.originalDimensions?.[1])||540;
+ for(const element of document.querySelectorAll(".viewport")){
+     element.style.aspectRatio=String(frameWidth)+"/"+String(frameHeight);
+ }
  const fallback=document.getElementById("videoFallback");
  const local=document.getElementById("localVideo");
  let localUrl=null,intervention=data.initialOption||"none",speedRatio=1,lastFrame=-1;
@@ -140,7 +145,7 @@ try {
  const controls=new OrbitControls(camera,renderer.domElement);
  controls.enableDamping=true;controls.enablePan=false;
  controls.minDistance=8;controls.maxDistance=900;controls.maxPolarAngle=Math.PI*.49;
- const sourceCamera=new THREE.PerspectiveCamera(57,16/9,.1,1600);
+ const sourceCamera=new THREE.PerspectiveCamera(57,frameWidth/frameHeight,.1,1600);
  sourceCamera.position.set(0,29,-38);
  sourceCamera.lookAt(-7,0,52);
  sourceCamera.updateProjectionMatrix();
@@ -362,7 +367,7 @@ try {
     // SOURCE coordinates keep 16:9 with the exact same film-frame aspect.
     // A mismatch is handled by the video player's object-fit:contain.
     camera.aspect=aspect;camera.updateProjectionMatrix();
-    sourceCamera.aspect=aspect;sourceCamera.updateProjectionMatrix();
+    // Keep the source camera's calibrated film aspect fixed; do not skew its rays on resize.
  }
  new ResizeObserver(resize).observe(viewport);
  resize();chooseCamera("source");
