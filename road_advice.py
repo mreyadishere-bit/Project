@@ -160,6 +160,27 @@ def road_report(evidence: dict, source: str, objects_file=None) -> dict:
                 "Compare calibrated speed samples with field measurements and posted limits.",
                 "Confirm camera calibration, measurement error and the legal posted speed.",
                 proposed_change="speed_review",benefit="No proposed speed limit without survey."))
+    # Lighting can be observed from sampled frame pixels even when vehicle
+    # tracking is unreliable. Report that observation separately rather than
+    # suppressing it behind a generic "need more tracks" warning.
+    if dark >= 20 and not any(r["id"] == "light" for r in recs):
+        recs.append(_recommendation(
+            "light", "Inspect low-visibility video periods",
+            f"Low camera-image brightness was recorded in {dark:.1f}% of sampled frames.",
+            "Low image brightness can hide details, but does not prove the public road is insufficiently illuminated.",
+            "First compare camera exposure, reflective markings and actual road lighting across the recorded times.",
+            "Measure illuminance and sign retroreflectivity onsite before recommending installed streetlights.",
+            proposed_change="lighting", priority="Visibility review",
+            benefit="Potentially clearer visibility if a real deficiency is confirmed; no reduction in crashes measured."))
+    if pedestrians >= 20 and vehicles >= 8 and not any(r["id"] in ("pedestrians","access") for r in recs):
+        recs.append(_recommendation(
+            "pedestrian_review", "Verify locations where people and vehicles share the camera view",
+            f"People appeared in {pedestrians:.1f}% and vehicles in {vehicles:.1f}% of sampled frames.",
+            "Visible road users warrant attention but may occupy separate depths or protected routes.",
+            "Review footpaths, safe access, speed rules and separation at the observed locations.",
+            "Confirm the tracks and on-site geometry. Do not propose an unsurveyed crosswalk.",
+            proposed_change="inspection", priority="People / access review",
+            benefit="A targeted safety review, not a verified reduction in risk."))
     if not recs:
         recs.append(_recommendation(
             "verify", "Complete a targeted road safety site review",
