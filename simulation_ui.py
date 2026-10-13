@@ -21,7 +21,7 @@ button:hover{background:#eaf2ff}
 .label strong{font-size:15px}.subtitle{color:#8493a5;font-size:11px}.after{color:#2b8769}.before{color:#ba8239}
 canvas{width:100%;height:auto;display:block}
 .foot{padding:11px 18px 17px;border-top:1px solid #e6ecf3;color:#8493a3;font-size:11px;line-height:1.5}
-@media(max-width:680px){.wrap{grid-template-columns:1fr}.scene canvas{height:240px}.top{flex-wrap:wrap}}
+@media(max-width:680px){.wrap{grid-template-columns:repeat(2,minmax(300px,1fr));overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:8px}.scene{scroll-snap-align:start}.scene canvas{height:auto}.top{flex-wrap:wrap}}
 </style></head><body>
 <div class="top"><span class="pill">ILLUSTRATIVE 2.5D MODEL · NOT THE ACTUAL ROAD</span>
 <div class="controls"><span class="pill" id="clock">00:00</span><button id="pause">Pause simulation</button><button id="restart">Restart</button></div></div>
