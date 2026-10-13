@@ -207,7 +207,7 @@ def render_reconstruction(job,snapshot):
     scene["recommended"]={"speed_pct":speed_pct,"crossing":crossing,"reason":reason}
     st.caption("**Automatically selected scenario:** "+reason+" Compare against the original; these are hypotheses and adjustable settings, not predicted improvements.")
     html=HTML.replace("__DATA__",json.dumps(scene,separators=(",",":")).replace("</","<\\/"))
-    st.iframe(html,height=720,scrolling=False,alt="Interactive camera-aligned 3D vehicle trajectories with before and after sliders")
+    st.iframe(html,height="content",alt="Interactive camera-aligned 3D vehicle trajectories with before and after sliders")
     with st.expander("What is measured versus inferred?"):
         st.write("Measured: sampled tracked image coordinates, time, classes. Approximate: heights/shapes and hidden 3D surfaces. Manually calibrated when available: planar road distances. The road-widening option is a visual hypothesis, not real-world road engineering.")
         st.caption("This is not yet a photogrammetrically accurate digital twin. A single camera cannot recover hidden geometry.")
