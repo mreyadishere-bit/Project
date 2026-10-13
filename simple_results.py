@@ -129,6 +129,10 @@ def show_results(job,snap):
         from traffic_control_view import show_concept
         show_concept(job,snap,interaction_events,key="control_"+job.id)
 
+    with st.expander("Survey a road patch · Calibrate real dimensions and explore 3D (optional)",
+                     expanded=False):
+        from road_calibration_ui import show_calibration
+        show_calibration(job,snap)
     with st.expander("Measure the AI's accuracy against labeled frames (optional)"):
         st.write("Actual precision, recall and F1 require manually labeled ground-truth boxes. Unlabeled video frames are excluded completely.")
         st.download_button("Download labeling template",
