@@ -64,6 +64,11 @@ const THREE=await import("three");
 const {OrbitControls}=await import("three/addons/controls/OrbitControls.js");
 const data=JSON.parse(document.getElementById("sceneData").textContent);
 const opts=[{id:"none",title:"Original road · no intervention"},...data.options];
+for(const choice of [
+ {id:"markings",title:"Explore clearer lane markings · unverified"},
+ {id:"lighting",title:"Explore extra lighting · unverified"},
+ {id:"speed_review",title:"Explore a warning sign · unverified"}
+]){if(!opts.some(o=>o.id===choice.id))opts.push(choice)}
 const selector=document.getElementById("intervention");
 for (const o of opts){const el=document.createElement("option");el.value=o.id;el.textContent=o.title;selector.append(el);}
 selector.value=data.initialOption||"none";
@@ -354,7 +359,7 @@ def _suggested_options(report):
 def render_reconstruction(job, snapshot):
     """Only show actual 3D meshes with video-derived time-indexed agent paths."""
     try:
-        scene = build_scene(job, snapshot)
+        scene = build_scene(job, snapshot, max_points=14000, max_tracks=180)
     except (ValueError, OSError) as exc:
         st.info("The 3D scene needs recorded video tracks: " + str(exc))
         return
@@ -378,4 +383,4 @@ def render_reconstruction(job, snapshot):
     if not options:
         st.caption("No site-specific physical improvement was justified by this footage, so the default 3D model does not pretend one was proven.")
     else:
-        st.caption("Available modeled changes come from video-review recommendations. They are illustrative, with no verified crash or travel-time improvement.")
+        st.caption("Suggested options correspond to evidence-linked review recommendations; any extra concepts in the menu are clearly labeled unverified. No crash or travel-time benefit is claimed.")
