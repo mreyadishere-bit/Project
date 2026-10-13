@@ -53,6 +53,10 @@ class SimpleWorkspaceTests(unittest.TestCase):
         self.assertIn('id="matchedBackground"', VIEWER)
         self.assertIn('environment.visible=!aligned', VIEWER)
         self.assertIn('backgroundImage', VIEWER)
+        self.assertIn('videoCtx.drawImage(video,0,0,frameWidth,frameHeight)', VIEWER)
+        self.assertIn('id="visualOverlays"', VIEWER)
+        self.assertIn('data.roadContext!=="highway_hint"', VIEWER)
+        self.assertIn('document.getElementById("whatObserved").textContent', VIEWER)
         self.assertIn('sourceTexture', VIEWER)
         self.assertIn('video.currentTime', VIEWER)
 
