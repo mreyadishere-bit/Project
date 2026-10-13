@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 
-def build_scene(job, snapshot, max_points=30000, max_tracks=500):
+def build_scene(job, snapshot, max_points=30000, max_tracks=500, include_annotated_video=True):
     csvpath=Path(job.objects_file)
     reference=Path(getattr(job,"reference_frame_file",""))
     if not csvpath.is_file() or not reference.is_file():
@@ -74,7 +74,7 @@ def build_scene(job, snapshot, max_points=30000, max_tracks=500):
     video=Path(getattr(job,"video_file",""))
     # Keep embedding capped so long recordings do not overload Streamlit
     # or browser memory. Do not create public URLs to user uploads.
-    if getattr(job,"video_ready",False) and video.is_file() and 0<video.stat().st_size<=8*1024*1024:
+    if include_annotated_video and getattr(job,"video_ready",False) and video.is_file() and 0<video.stat().st_size<=8*1024*1024:
         video_inline="data:video/mp4;base64,"+base64.b64encode(video.read_bytes()).decode("ascii")
     return {
         "embedded_video":video_inline,
