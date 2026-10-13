@@ -46,10 +46,11 @@ results_page(job,snap,hosted=True)
 '''
         result = AppTest.from_string(src).run(timeout=40)
         self.assertFalse(result.exception, str(result.exception))
-        self.assertGreater(len(result.slider), 0)
-        self.assertGreater(len(result.checkbox), 0)
-        # The Play/Pause controls live inside the standalone animated iframe,
-        # so they are not Streamlit native buttons returned by AppTest.
+        # 3D viewer is intentionally lazy-loaded from one button. The old
+        # generic toy-simulation sliders must not appear in the final report.
+        self.assertEqual(len(result.slider), 0)
+        self.assertEqual(len(result.checkbox), 0)
+        self.assertGreaterEqual(len(result.button), 1)
 
 
 if __name__=="__main__":
