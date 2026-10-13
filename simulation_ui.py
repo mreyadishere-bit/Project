@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import streamlit as st
-import streamlit.components.v1 as components
 from simulation_engine import Scenario, run_simulation
 
 SIM_HTML = r"""
@@ -132,7 +131,7 @@ def simulation_panel():
     y.metric("100 m travel time",f"{before['road_segment_travel_time_s']:.1f} → {after['road_segment_travel_time_s']:.1f} s",
              help="Modeled movement on a 100 m link at constant assumed speed.")
     html=SIM_HTML.replace("__STATE__",json.dumps(result,separators=(",",":")).replace("</","<\\/"))
-    components.html(html,height=465,scrolling=False)
+    st.iframe(html, height="content", alt="Animated before-and-after isometric traffic scenario; all figures are illustrative")
     with st.expander("Exactly how the illustrative simulation works"):
         st.write(result["methodology"])
         st.caption("The results are controlled by manually selected inputs, not fitted to the uploaded video. Similar-looking results can occur under very different real-world conditions.")
