@@ -44,6 +44,11 @@ class RoadCalibration:
         xy=cv2.perspectiveTransform(
             np.array([[[x_px/w,y_px/h]]],np.float32),self.matrix())[0,0]
         if not np.isfinite(xy).all():return None
+        if not (-.03*self.width_m <= xy[0] <= 1.03*self.width_m and
+                -.03*self.length_m <= xy[1] <= 1.03*self.length_m):
+            # Homography extrapolation outside the surveyed patch is not a
+            # trustworthy measured road position.
+            return None
         return (float(xy[0]),float(xy[1]))
 
 
