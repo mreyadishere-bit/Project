@@ -11,6 +11,9 @@ HTML=r'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" 
 *{box-sizing:border-box}body{margin:0;color:#183150;background:#f7f9fc;font:13px -apple-system,Segoe UI,Arial,sans-serif}
 .header{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:11px 13px;background:white;border:1px solid #e4ebf3;border-radius:12px}
 button{border:1px solid #d5e1ee;border-radius:9px;padding:8px 11px;background:white;cursor:pointer}
+#video-panel{margin:10px 0;border-radius:15px;overflow:hidden}
+#video-panel video{display:block;width:100%;max-height:420px;background:#071426;object-fit:contain}
+#video-panel p{font-size:11px;color:#798a9d}
 .scene-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}
 .scene{min-width:0;background:white;border:1px solid #e5ebf2;border-radius:15px;overflow:hidden}
 .scene p{margin:0;padding:12px;font-weight:750}
@@ -28,6 +31,7 @@ canvas{width:100%;height:auto;display:block;background:#e5ecf4}
 <div class="header"><strong>Road Vision · Camera-registered 3D</strong><span><button id="apply">Apply recommendations</button> <button id="reset">Reset camera</button> <button id="pause">Pause</button> <button id="restart">Restart</button></span></div>
 <div class="controls">Original timeline <input type="range" id="seek" min="0" max="1000" value="0"><strong id="clock">00:00</strong>
 <select id="rate"><option value=".5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select></div>
+<div id="video-panel">__VIDEO_ELEMENT__</div>
 <div class="scene-grid"><div class="scene"><p>Observed <small>Video tracks + reference photo</small></p><div id="left"></div></div>
 <div class="scene"><p>After <small>Editable counterfactual</small></p><div id="right"></div></div></div>
 <div class="options">
@@ -46,6 +50,8 @@ const data=JSON.parse(document.getElementById('payload').textContent);
 const W=960,H=Math.max(240,Math.min(640,960*data.height/data.width));
 const metric=data.metric_scene;
 let playing=true,t=0,rate=1,last=performance.now(),mult=data.recommended.speed_pct/100,widen=0,cross=data.recommended.crossing,photo=true;
+const sourceVideo=document.getElementById('sourcevid');
+if(sourceVideo){sourceVideo.pause();playing=false;}
 const specs=metric?
  {car:[1.8,1.5,4.4],truck:[2.5,3.2,9],bus:[2.5,3.2,11],motorcycle:[.9,1.2,2.2],bicycle:[.7,1.5,1.8],person:[.55,1.8,.5]}:
  {car:[42,24,22],truck:[65,32,38],bus:[68,35,38],motorcycle:[22,17,14],bicycle:[19,15,10],person:[11,25,11]};
@@ -127,8 +133,13 @@ function nearest(points,sec){
  return [sec,...Array.from({length:Math.min(a.length,b.length)-1},(_,k)=>a[k+1]+(b[k+1]-a[k+1])*v)];
 }
 function render(now){
- if(playing)t+=(now-last)/1000*rate;
- if(t>data.duration)t=0;last=now;
+ if(sourceVideo){
+   t=sourceVideo.currentTime||0;
+ } else {
+   if(playing)t+=(now-last)/1000*rate;
+   if(t>data.duration)t=0;
+ }
+ last=now;
  document.getElementById('clock').textContent=String(Math.floor(t/60)).padStart(2,'0')+':'+String(Math.floor(t%60)).padStart(2,'0');
  document.getElementById('seek').value=Math.round(t/Math.max(1,data.duration)*1000);
  for(let j=0;j<2;j++){
@@ -167,10 +178,14 @@ document.getElementById('apply').onclick=()=>{
 document.getElementById('speed').value=data.recommended.speed_pct;
 document.getElementById('speedtext').textContent=data.recommended.speed_pct+'%';
 document.getElementById('crossing').checked=cross;
-document.getElementById('pause').onclick=()=>{playing=!playing;document.getElementById('pause').textContent=playing?'Pause':'Play';last=performance.now()};
-document.getElementById('restart').onclick=()=>{t=0;last=performance.now()};
-document.getElementById('seek').oninput=e=>{t=+e.target.value/1000*data.duration;last=performance.now()};
-document.getElementById('rate').onchange=e=>rate=+e.target.value;
+document.getElementById('pause').onclick=()=>{
+ if(sourceVideo){if(sourceVideo.paused){sourceVideo.play().catch(console.warn)}else sourceVideo.pause();playing=!sourceVideo.paused;}
+ else playing=!playing;
+ document.getElementById('pause').textContent=playing?'Pause':'Play';last=performance.now();
+};
+document.getElementById('restart').onclick=()=>{t=0;if(sourceVideo){sourceVideo.currentTime=0;sourceVideo.play().catch(console.warn)}last=performance.now()};
+document.getElementById('seek').oninput=e=>{t=+e.target.value/1000*data.duration;if(sourceVideo&&sourceVideo.readyState>0){sourceVideo.currentTime=Math.min(t,Math.max(0,sourceVideo.duration-.05))}last=performance.now()};
+document.getElementById('rate').onchange=e=>{rate=+e.target.value;if(sourceVideo)sourceVideo.playbackRate=rate};
 document.getElementById('speed').oninput=e=>{mult=+e.target.value/100;document.getElementById('speedtext').textContent=e.target.value+'%'};
 document.getElementById('width').oninput=e=>{widen=+e.target.value;document.getElementById('widthtext').textContent=e.target.value+'% visual shift'};
 document.getElementById('crossing').onchange=e=>cross=e.target.checked;
@@ -206,7 +221,15 @@ def render_reconstruction(job,snapshot):
     reason=("Speed management suggested for review. " if speed_pct<100 else "No speed reduction suggested by current flags. ")+("Pedestrian crossing suggested for site review." if crossing else "No crossing added automatically.")
     scene["recommended"]={"speed_pct":speed_pct,"crossing":crossing,"reason":reason}
     st.caption("**Automatically selected scenario:** "+reason+" Compare against the original; these are hypotheses and adjustable settings, not predicted improvements.")
-    html=HTML.replace("__DATA__",json.dumps(scene,separators=(",",":")).replace("</","<\\/"))
+    from html import escape
+    inline_video=scene.pop("embedded_video",None)
+    video_element=(
+        '<video id="sourcevid" controls playsinline preload="metadata" src="'+escape(inline_video,quote=True)+'"></video>'
+        if inline_video else
+        '<p>Video too large to synchronize in the browser here. Use the full annotated video player above; 3D playback below uses the original timestamps independently.</p>'
+    )
+    html=HTML.replace("__VIDEO_ELEMENT__",video_element).replace(
+        "__DATA__",json.dumps(scene,separators=(",",":")).replace("</","<\\/"))
     st.iframe(html,height="content",alt="Interactive camera-aligned 3D vehicle trajectories with before and after sliders")
     with st.expander("What is measured versus inferred?"):
         st.write("Measured: sampled tracked image coordinates, time, classes. Approximate: heights/shapes and hidden 3D surfaces. Manually calibrated when available: planar road distances. The road-widening option is a visual hypothesis, not real-world road engineering.")
