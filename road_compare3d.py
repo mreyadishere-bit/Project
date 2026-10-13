@@ -336,10 +336,20 @@ try {
  let index=0;
  for(const track of data.tracks){
     if(!(track.class in palettes)||!track.points?.length)continue;
-    const options=palettes[track.class],color=options[index++%options.length];
+    const segments=prepareMotion(track.points);
+    if(!segments.length)continue; // Ignore single-frame ID noise instead of teleporting an entire vehicle.
+    const colors=palettes[track.class],color=colors[index++%colors.length];
     const obj=vehicleModel(track.class,color);
+    const materials=[];
+    obj.traverse(child=>{
+      if(!child.isMesh)return;
+      child.material=child.material.clone(); // Each vehicle fades independently.
+      child.material.transparent=true;
+      child.material.opacity=0;
+      materials.push(child.material);
+    });
     obj.visible=false;scene.add(obj);
-    models.push({obj,track});
+    models.push({obj,track,segments,materials,previousTime:null,heading:null});
  }
  const lighting=new THREE.Group();scene.add(lighting);
  for(let v=.4;v<.95;v+=.15){
@@ -372,45 +382,118 @@ try {
       camera.position.set(0,170,90);controls.target.set(0,0,85);controls.update();
    }
  }
- function interpolate(points,t){
-    if(!points||!points.length||t<points[0][0]||t>points[points.length-1][0])return null;
-    let lo=0,hi=points.length-1;
-    while(lo<hi){const mid=(lo+hi)>>1;if(points[mid][0]<t)lo=mid+1;else hi=mid}
-    const a=points[Math.max(0,lo-1)],b=points[lo];
-    if(a===b||a[0]===b[0])return b;
-    if(b[0]-a[0]>2.8)return null; // do not fabricate long tracks across occlusions
-    const factor=(t-a[0])/(b[0]-a[0]);
-    return [t,...[1,2,3,4].map(i=>a[i]+(b[i]-a[i])*factor)];
+ // Remove isolated box jitter and split reappearing/disconnected IDs.
+ // A tracker ID is not proof that one physical vehicle remained continuous.
+ function prepareMotion(points){
+   const raw=points.filter(p=>p.length>=5 && p.slice(0,5).every(Number.isFinite))
+                    .slice().sort((a,b)=>a[0]-b[0]);
+   if(raw.length<3)return [];
+   const smooth=raw.map((p,i)=>{
+     const out=p.slice(0,5);
+     if(i===0||i===raw.length-1)return out;
+     const prev=raw[i-1],next=raw[i+1],dt=next[0]-prev[0];
+     if(dt<=0||dt>1.35)return out;
+     const mx=(prev[1]+next[1])/2,my=(prev[2]+next[2])/2;
+     const residual=Math.hypot(p[1]-mx,p[2]-my);
+     const neighbors=Math.hypot(prev[1]-next[1],prev[2]-next[2]);
+     if(residual>Math.max(.055,p[4]*1.35) && neighbors<.13){
+        out[1]=mx;out[2]=my; // isolated tracker glitch
+     } else if(neighbors<.16){
+        out[1]=.18*prev[1]+.64*p[1]+.18*next[1];
+        out[2]=.18*prev[2]+.64*p[2]+.18*next[2];
+     }
+     return out;
+   });
+   const segments=[];let current=[];
+   function finish(){
+     if(current.length>=3 && current[current.length-1][0]-current[0][0]>=.18)
+       segments.push(current);
+     current=[];
+   }
+   for(const p of smooth){
+      if(current.length){
+        const prev=current[current.length-1],dt=p[0]-prev[0];
+        const jump=Math.hypot(p[1]-prev[1],p[2]-prev[2]);
+        const cap=Math.max(.075,.12*dt,2.5*Math.max(p[4],prev[4]));
+        if(dt<=0||dt>1.45||jump>cap)finish();
+      }
+      current.push(p);
+   }
+   finish();
+   return segments;
+ }
+ function interpolateMotion(segments,t){
+   for(const points of segments){
+     const first=points[0],last=points[points.length-1];
+     if(t<first[0]||t>last[0])continue;
+     let lo=0,hi=points.length-1;
+     while(lo<hi){const mid=(lo+hi)>>1;if(points[mid][0]<t)lo=mid+1;else hi=mid}
+     const a=points[Math.max(0,lo-1)],b=points[lo];
+     const fraction=a===b||b[0]===a[0]?0:(t-a[0])/(b[0]-a[0]);
+     const p=a===b?a:[t,...[1,2,3,4].map(i=>a[i]+(b[i]-a[i])*fraction)];
+     const fade=Math.max(0,Math.min(1,(t-first[0])/.38,(last[0]-t)/.38));
+     return {p,alpha:fade,direction:last[2]-first[2]};
+   }
+   return null;
+ }
+ // Derive heading from the persistent lane's curve, not from the
+ // noisy per-frame image-box delta that twists cars 90 degrees sideways.
+ function roadHeading(p,screenDirection){
+    const v=Math.max(.36,Math.min(.97,p[2]));
+    const left=(sampleEdge("left",v)+sampleEdge("innerLeft",v))/2;
+    const right=(sampleEdge("innerRight",v)+sampleEdge("right",v))/2;
+    const onLeft=Math.abs(p[1]-left)<Math.abs(p[1]-right);
+    const center=y=>{
+      const a=onLeft?"left":"innerRight",b=onLeft?"innerLeft":"right";
+      return (sampleEdge(a,y)+sampleEdge(b,y))/2;
+    };
+    // Traffic on opposite separated carriageways travels in opposite directions.
+    const sign=Math.abs(screenDirection)>.03?Math.sign(screenDirection):(onLeft?1:-1);
+    const v2=Math.max(.34,Math.min(.99,v+sign*.045));
+    const here=imageToGround(center(v),v);
+    const ahead=imageToGround(center(v2),v2);
+    if(!here||!ahead)return null;
+    const dx=ahead.x-here.x,dz=ahead.z-here.z;
+    if(Math.hypot(dx,dz)<.02)return null;
+    return Math.atan2(-dx,-dz);
  }
  function update3D(currentTime){
     for(const entry of models){
-      const first=entry.track.points[0][0];
-      const change=entry.track.class==="person"?1:speedRatio;
+      const first=entry.segments[0][0][0];
+      const change=speedRatio;
       const trackTime=first+(currentTime-first)*change;
-      const p=interpolate(entry.track.points,trackTime);
-      if(!p){entry.obj.visible=false;continue}
+      const measured=interpolateMotion(entry.segments,trackTime);
+      if(!measured||measured.alpha<.01){
+        entry.obj.visible=false;
+        entry.previousTime=null;
+        continue;
+      }
+      const p=measured.p;
       const position=imageToGround(p[1],p[2]);
-      if(!position){entry.obj.visible=false;continue}
+      if(!position){entry.obj.visible=false;entry.previousTime=null;continue;}
       entry.obj.visible=true;
       entry.obj.position.copy(position);
-      // Make box-height perspective roughly match the original tracked car.
+      for(const material of entry.materials)material.opacity=measured.alpha;
       if(document.getElementById("camera").value==="source"){
         const low=position.clone().project(sourceCamera);
         const high=position.clone().add(new THREE.Vector3(0,2.15,0)).project(sourceCamera);
         const projectedHeight=Math.abs((high.y-low.y)/2);
         if(projectedHeight>.0001 && p[4]>0){
-          entry.obj.scale.setScalar(Math.max(.2,Math.min(3.2,p[4]/projectedHeight)));
+          const desired=Math.max(.2,Math.min(3.2,p[4]/projectedHeight));
+          entry.obj.scale.setScalar(desired);
         }
       }else entry.obj.scale.setScalar(1);
-      const pre=interpolate(entry.track.points,Math.max(first,trackTime-.23));
-      const after=interpolate(entry.track.points,Math.min(entry.track.points[entry.track.points.length-1][0],trackTime+.23));
-      if(pre&&after){
-        const a=imageToGround(pre[1],pre[2]),b=imageToGround(after[1],after[2]);
-        if(a&&b){
-          const delta=b.clone().sub(a);
-          if(delta.length()>.03)entry.obj.rotation.y=Math.atan2(-delta.x,-delta.z);
+      const yaw=roadHeading(p,measured.direction);
+      if(yaw!==null){
+        const jump=entry.previousTime===null||Math.abs(currentTime-entry.previousTime)>.35;
+        if(jump||entry.heading===null)entry.heading=yaw;
+        else{
+          const delta=Math.atan2(Math.sin(yaw-entry.heading),Math.cos(yaw-entry.heading));
+          entry.heading+=delta*.11;
         }
+        entry.obj.rotation.y=entry.heading;
       }
+      entry.previousTime=currentTime;
     }
  }
  function applyIntervention(){
