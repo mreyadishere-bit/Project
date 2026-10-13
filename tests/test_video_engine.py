@@ -174,6 +174,10 @@ class VideoTests(unittest.TestCase):
                 self.assertEqual(snap["status"],"completed",snap["error"])
                 self.assertEqual(snap["crossings"]["total_passed"],1)
                 self.assertEqual(snap["crossings"]["passed_by_class"]["car"],1)
+                with job.crossings_file.open(encoding="utf-8-sig",newline="") as stream:
+                    crossings=list(csv.DictReader(stream))
+                self.assertEqual(len(crossings),1)
+                self.assertEqual(crossings[0]["track_id"],"10")
                 self.assertEqual(snap["unique_tracks"],1)
                 self.assertEqual(snap["detected_now"]["vehicles"],1)
             finally:
