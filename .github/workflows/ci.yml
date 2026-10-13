@@ -51,3 +51,25 @@ jobs:
           assert any('YouTube LIVE URL' in item.label for item in app.text_input)
           print('Hosted UI, navigation and YouTube source form render successfully')
           PY
+
+      - name: One-time diagnostic - FWvIPfxK5Jo YouTube live metadata
+        continue-on-error: true
+        run: |
+          timeout 65s python - <<'PY'
+          from live_sources import canonical_youtube_live_url, resolve_youtube_live
+          url = "https://www.youtube.com/watch?v=FWvIPfxK5Jo"
+          print("VALID_URL:", canonical_youtube_live_url(url), flush=True)
+          try:
+              import yt_dlp
+              opts = {"skip_download": True, "quiet": True, "no_warnings": True,
+                      "noplaylist": True, "socket_timeout": 10, "retries": 0,
+                      "extractor_retries": 0, "format": "best[height<=720]/best"}
+              with yt_dlp.YoutubeDL(opts) as ydl:
+                  info = ydl.extract_info(url, download=False)
+              print("VIDEO_TITLE:", str(info.get("title", ""))[:120], flush=True)
+              print("IS_LIVE:", info.get("is_live"), flush=True)
+              print("LIVE_STATUS:", info.get("live_status"), flush=True)
+              print("MEDIA_AVAILABLE:", bool(info.get("url")), flush=True)
+          except Exception as e:
+              print("PROBE_ERROR:", type(e).__name__, str(e)[:700], flush=True)
+          PY
