@@ -191,6 +191,7 @@ try {
  }
  const mat=(color,metal=0)=>new THREE.MeshStandardMaterial({color,roughness:.78,metalness:metal,side:THREE.DoubleSide});
  const asphalt=mat(0x383f4b),shoulder=mat(0x78828e),median=mat(0x72976a),green=mat(0x88b58a),white=mat(0xeef0e8),metal=mat(0x9baebc,.24);
+ const geometryHealth={roadSections:0,vertexCount:0,groundWidth:0,groundDepth:0};
  const ground=new THREE.Mesh(new THREE.PlaneGeometry(1200,1600),green);
  ground.rotation.x=-Math.PI/2;ground.position.z=160;ground.position.y=-.13;ground.receiveShadow=true;scene.add(ground);
  function addMesh(geo,material,x=0,y=0,z=0,group=scene){
@@ -207,6 +208,20 @@ try {
     }
     const count=points.length/6;
     if(count<2)return;
+    let minX=Infinity,maxX=-Infinity,minZ=Infinity,maxZ=-Infinity;
+    for(let k=0;k<points.length;k+=3){
+      minX=Math.min(minX,points[k]);maxX=Math.max(maxX,points[k]);
+      minZ=Math.min(minZ,points[k+2]);maxZ=Math.max(maxZ,points[k+2]);
+    }
+    // A stale matrixWorld can back-project all pixels to the SAME point:
+    // the renderer then silently draws degenerate, invisible triangles.
+    if(maxX-minX<.4 || maxZ-minZ<1){
+      throw new Error("3D road projection collapsed to a point. Check camera world matrix and ground rays.");
+    }
+    geometryHealth.roadSections++;
+    geometryHealth.vertexCount+=count*2;
+    geometryHealth.groundWidth=Math.max(geometryHealth.groundWidth,maxX-minX);
+    geometryHealth.groundDepth=Math.max(geometryHealth.groundDepth,maxZ-minZ);
     for(let i=0;i<count-1;i++){const k=2*i;indices.push(k,k+1,k+2,k+1,k+3,k+2)}
     const geo=new THREE.BufferGeometry();
     geo.setAttribute("position",new THREE.Float32BufferAttribute(points,3));
@@ -216,6 +231,11 @@ try {
  strip("left","innerLeft",asphalt);
  strip("innerRight","right",asphalt);
  strip("innerLeft","innerRight",median,.06);
+ if(geometryHealth.roadSections!==3 || geometryHealth.vertexCount<60){
+   throw new Error("The reconstructed 3D road is incomplete: "+JSON.stringify(geometryHealth));
+ }
+ document.getElementById("scenarioName").title=
+   "Road mesh verified: "+geometryHealth.vertexCount+" vertices · "+geometryHealth.roadSections+" surfaces";
  function inLaneImage(v,left,right,t){return sampleEdge(left,v)*(1-t)+sampleEdge(right,v)*t}
  const markingGroup=new THREE.Group();scene.add(markingGroup);
  function dashLane(left,right,fraction,group,continuous=false){
