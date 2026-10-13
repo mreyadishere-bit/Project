@@ -19,6 +19,7 @@ import uuid
 import cv2
 from scene_intelligence import image_motion, scene_diagnostics, diagnostic_events, draw_scene_overlay
 from insight_engine import EvidenceAccumulator
+from traffic_geometry import RoadCalibration, CrossingCounter, ground_kinematics
 
 BASE = Path(__file__).resolve().parent
 OUTPUTS = BASE / "outputs"
@@ -26,7 +27,7 @@ LIVE_STREAM_SLOTS = threading.BoundedSemaphore(1)  # public hosted live CPU infe
 ROAD_CLASSES = ("person", "car", "motorcycle", "bus", "truck", "bicycle", "traffic light", "stop sign")
 VEHICLES = {"car", "motorcycle", "bus", "truck", "bicycle"}
 SUMMARY_FIELDS = ["video_second", "frame_number", "people", "vehicles", "cars", "buses", "trucks", "motorcycles", "bicycles", "traffic_lights", "stop_signs", "all_objects"]
-OBJECT_FIELDS = ["video_second", "frame_number", "track_id", "class", "confidence", "x1", "y1", "x2", "y2", "center_x", "center_y", "direction", "image_motion_px_s", "calibrated_speed_kmh", "observed_at_utc"]
+OBJECT_FIELDS = ["video_second", "frame_number", "track_id", "class", "confidence", "x1", "y1", "x2", "y2", "center_x", "center_y", "direction", "image_motion_px_s", "calibrated_speed_kmh", "world_x_m", "world_y_m", "heading_deg", "observed_at_utc"]
 EVENT_FIELDS = ["video_second", "event_type", "title", "description", "level"]
 
 
@@ -124,7 +125,10 @@ class VideoSettings:
     analysis_fps: int = 5   # file frames analysed per video second (approx.)
     all_classes: bool = False
     save_video: bool = False
-    meters_per_pixel: float | None = None   # explicit approximate camera calibration
+    meters_per_pixel: float | None = None   # legacy rough pixel scale
+    road_calibration: RoadCalibration | None = None
+    count_line_fraction: float = .50
+    tracker: str = "botsort.yaml"
 
 
 class VideoJob:
@@ -136,6 +140,10 @@ class VideoJob:
             raise ValueError("Invalid confidence")
         if settings.analysis_fps not in {1, 2, 5, 10, 15, 30}:
             raise ValueError("Invalid analysis rate")
+        if settings.tracker not in {"botsort.yaml", "bytetrack.yaml"}:
+            raise ValueError("Invalid tracker")
+        if not .05 <= settings.count_line_fraction <= .95:
+            raise ValueError("Invalid counting-line position")
         if source_kind not in {"file", "youtube", "public_live"}:
             raise ValueError("Unsupported source kind")
         if source_kind == "youtube":
@@ -166,6 +174,10 @@ class VideoJob:
         self.video_export_error = None
         self.video_ready = False
         self.evidence = EvidenceAccumulator()
+        self.crossings = CrossingCounter(settings.count_line_fraction)
+        self.reference_frame_file = self.folder / "reference.jpg"
+        self.frame_width = 0
+        self.frame_height = 0
         self.events_file = self.folder / "events.csv"
         self._stop = threading.Event()
         self._pause = threading.Event()
@@ -221,6 +233,12 @@ class VideoJob:
                 "status": self.status, "error": self.error, "label": self.label,
                 "video_ready": self.video_ready, "video_export_error": self.video_export_error,
                 "evidence": self.evidence.snapshot(), "settings_fps": self.settings.analysis_fps,
+                "crossings": self.crossings.snapshot(),
+                "frame_width": self.frame_width, "frame_height": self.frame_height,
+                "calibration": ({"points": self.settings.road_calibration.points,
+                                "width_m": self.settings.road_calibration.width_m,
+                                "length_m": self.settings.road_calibration.length_m}
+                                if self.settings.road_calibration else None),
                 "preview_jpeg": self.preview_jpeg, "best_preview_jpeg": self.best_preview_jpeg,
                 "best_preview_at": self.best_preview_at, "best_detection_count": self.best_detection_count,
                 "detected_class_totals": dict(self.detected_class_totals),
@@ -319,6 +337,7 @@ class VideoJob:
             initial_frame_deadline = live_start + 30.0 if self.source_kind in {"youtube", "public_live"} else None
             previous_points: dict[int, tuple[float, float]] = {}
             previous_motion: dict[int, tuple[float, float, float]] = {}
+            previous_world: dict[int, tuple[float,float,float]] = {}
             last_emitted: dict[str, float] = {}
             with self.summary_file.open("w", encoding="utf-8-sig", newline="") as summaries, self.objects_file.open("w", encoding="utf-8-sig", newline="") as objects, self.events_file.open("w", encoding="utf-8-sig", newline="") as event_stream:
                 summary_csv = csv.DictWriter(summaries, fieldnames=SUMMARY_FIELDS)
@@ -364,7 +383,10 @@ class VideoJob:
                     if width > 1600:
                         new_size = (1600, round(height * 1600 / width))
                         frame = cv2.resize(frame, new_size)
-                    tracked = model.track(frame, persist=True, tracker="bytetrack.yaml", classes=class_ids,
+                    if self.frame_width == 0:
+                        self.frame_width, self.frame_height = frame.shape[1], frame.shape[0]
+                        cv2.imwrite(str(self.reference_frame_file),frame,[cv2.IMWRITE_JPEG_QUALITY,82])
+                    tracked = model.track(frame, persist=True, tracker=self.settings.tracker, classes=class_ids,
                                           imgsz=self.settings.image_size, conf=self.settings.confidence,
                                           device=device, verbose=False)[0]
                     detections = []
@@ -382,9 +404,20 @@ class VideoJob:
                             center = ((x1 + x2) / 2, (y1 + y2) / 2)
                             direction = motion_direction(previous_points.get(track_id), center) if track_id is not None else "untracked"
                             image_px_s, calibrated_kmh = (None, None)
+                            world_x, world_y, heading = None, None, None
+                            calibration = self.settings.road_calibration
+                            foot = ((x1+x2)/2, y2)
+                            current_world = calibration.world(foot[0],foot[1],frame.shape[1],frame.shape[0]) if calibration else None
+                            if current_world is not None:
+                                world_x,world_y = (round(current_world[0],3),round(current_world[1],3))
                             if track_id is not None:
-                                foot = ((x1 + x2) / 2, y2)
                                 image_px_s, calibrated_kmh = image_motion(previous_motion.get(track_id), foot, seconds, self.settings.meters_per_pixel)
+                                if current_world is not None:
+                                    calibrated_speed, heading = ground_kinematics(
+                                        previous_world.get(track_id),current_world,seconds
+                                    )
+                                    calibrated_kmh = calibrated_speed
+                                    previous_world[track_id] = (current_world[0],current_world[1],seconds)
                                 previous_points[track_id] = center
                                 previous_motion[track_id] = (foot[0], foot[1], seconds)
                             if image_px_s is not None:
@@ -399,9 +432,11 @@ class VideoJob:
                                 "center_x": round(center[0], 1), "center_y": round(center[1], 1),
                                 "direction": direction, "image_motion_px_s": image_px_s,
                                 "calibrated_speed_kmh": calibrated_kmh,
-                                "observed_at_utc": now_iso,
+                                "world_x_m": world_x, "world_y_m": world_y,
+                                "heading_deg": heading, "observed_at_utc": now_iso,
                             })
                     counts = frame_counts(detections)
+                    crossing_events = self.crossings.observe(detections, frame.shape[1],frame.shape[0],seconds)
                     diag = scene_diagnostics(frame, detections, counts)
                     new_events = diagnostic_events(diag, seconds, last_emitted)
                     event_csv.writerows(new_events)
@@ -418,7 +453,13 @@ class VideoJob:
                         if track_id not in active_ids:
                             del previous_points[track_id]
                             previous_motion.pop(track_id, None)
+                    for track_id in list(previous_world):
+                        if track_id not in active_ids: previous_world.pop(track_id,None)
                     annotated = draw_scene_overlay(frame, detections)
+                    yline = int(self.settings.count_line_fraction * frame.shape[0])
+                    cv2.line(annotated,(0,yline),(frame.shape[1]-1,yline),(90,211,255),2,cv2.LINE_AA)
+                    cv2.putText(annotated,f"PASSED: {self.crossings.snapshot()['total_passed']}",
+                                (12,max(18,yline-9)),cv2.FONT_HERSHEY_SIMPLEX,.55,(255,255,255),2,cv2.LINE_AA)
                     if self.settings.save_video and not self.is_live:
                         if writer is None:
                             h, w = annotated.shape[:2]
