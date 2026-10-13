@@ -224,6 +224,27 @@ def source_and_settings(hosted: bool, running: bool):
                 save_video = st.checkbox("Create final playable video (H.264)", value=True, disabled=running or source_mode in {"PC camera", "YouTube Live (beta)", "Free Live Traffic Cameras"},key="sr_export_video")
                 if save_video:
                     st.caption("Creates the full-timeline, time-sampled annotated MP4 after analysis. H.264 export takes additional time and disk space; original audio is not kept.")
+        st.markdown("**Optional road-focused detection**")
+        with st.expander("Focus the detector on a road area (helps small distant cars)"):
+            focus = st.checkbox(
+                "Detect using a selected road region but keep full original video",
+                value=False,disabled=running,key="sr_roi_focus",
+                help="Cuts out sky/buildings/trees before inference. Tracked coordinates and final video remain aligned to the original full frame."
+            )
+            roi_rect=None
+            if focus:
+                c1,c2=st.columns(2)
+                l=c1.slider("Left boundary %",0,75,5,1,disabled=running,key="sr_roi_l")
+                r=c2.slider("Right boundary %",25,100,95,1,disabled=running,key="sr_roi_r")
+                t=c1.slider("Top boundary %",0,75,10,1,disabled=running,key="sr_roi_t")
+                btm=c2.slider("Bottom boundary %",25,100,100,1,disabled=running,key="sr_roi_b")
+                if r-l<18 or btm-t<18:
+                    st.error("The road focus area needs to cover at least 18% of frame width and height.")
+                else:
+                    roi_rect=(l/100,t/100,r/100,btm/100)
+                    st.caption(f"Analyzing {((r-l)*(btm-t))/100:.0f}% of image area; images and replay keep the original source-camera coordinates.")
+            else:
+                st.caption("Default: inspect the entire original frame. Focus only after checking that every traffic direction is included.")
         st.markdown("**Traffic measurement**")
         count_line_fraction = st.slider(
             "Vehicle counting line (vertical position of image)",
@@ -298,7 +319,8 @@ def source_and_settings(hosted: bool, running: bool):
                         road_calibration=road_calibration,
                         camera_fov_deg=camera_fov_deg,
                         count_line_fraction=count_line_fraction,
-                        tracker="traffic_botsort.yaml", use_openvino=use_openvino
+                        tracker="traffic_botsort.yaml", use_openvino=use_openvino,
+                        roi_rect=roi_rect
                     ), label=label, source_kind=("youtube" if source_mode == "YouTube Live (beta)" else "public_live" if source_mode == "Free Live Traffic Cameras" else "file")
                 )
                 st.rerun()
