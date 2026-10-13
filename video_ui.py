@@ -577,7 +577,7 @@ def video_tab():
         # Final report stays on the SAME Workspace page; no navigation required.
         current = st.session_state.get("video_job")
         final_state = current.snapshot() if current else None
-        if final_state and final_state["status"] in {"completed", "stopped", "ended"} and final_state["analyzed_frames"]:
+        if final_state and final_state["status"] in {"completed", "stopped", "ended", "error"} and final_state["analyzed_frames"]:
             results_page(current, final_state, hosted)
     elif selection == "Intelligence":
         @st.fragment(run_every=1.5 if active else None)
