@@ -5,6 +5,7 @@ Native controls for accessibility, evidence-first analytics, bounded live update
 from __future__ import annotations
 
 from html import escape
+import json
 from pathlib import Path
 import os
 import shutil
@@ -272,12 +273,12 @@ def live_metrics(snap):
         ("Apparent motion", f"{snap.get('mean_apparent_speed', 0):.1f}" if snap else "—", "px/s", ""),
         ("Image brightness", f"{scene.get('brightness', 0):.0f}" if scene else "—", "0–255", ""),
         ("Image occupancy", f"{scene.get('occupancy_ratio',0)*100:.0f}%" if scene else "—", "box area*", ""),
-        ("Visual proximity flags", snap.get("total_events", 0) if snap else 0, "all events**", "warn" if snap and snap.get("total_events") else ""),
+        ("Image proximity pairs", scene.get("visual_proximity_pairs", 0), "current frame", "warn" if scene.get("visual_proximity_pairs") else ""),
         ("Calibrated speed", f"{snap.get('mean_calibrated_speed',0):.1f}" if snap and snap.get("calibrated_speed_samples") else "—", "km/h est.", ""),
     ])
     st.markdown(
         '<div class="sr-footnote">* Overlapping detection boxes can inflate occupancy. '
-        '** The event count includes brightness and crowding observations, not verified near misses. '
+        'Close objects in image coordinates do not prove close distances on the road. '
         'Speed is an approximate image-scale estimate only when manual calibration is supplied.</div>',
         unsafe_allow_html=True
     )
@@ -354,6 +355,46 @@ def exports_view(job, snap, hosted):
         return
     if snap["status"] == "error":
         st.warning("The session encountered an error. Any partial CSV files are unverified.")
+    st.markdown("**Executive observation summary**")
+    st.caption(
+        f"Source: {snap['label']} · {snap['analyzed_frames']:,} frames analyzed · "
+        f"Max visible vehicles in one frame: {snap['max_vehicles']} · "
+        f"Max visible people in one frame: {snap['max_people']} · "
+        f"{snap['total_events']} experimental diagnostic events"
+    )
+    st.caption(
+        "No reliable accident probability or real-world speed is inferred without validated "
+        "camera geometry and a tested risk model."
+    )
+    report = {
+        "version": "3.0-research", "job_id": job.id, "source": snap["label"],
+        "status": snap["status"], "partial_error": snap.get("error") or None,
+        "analyzed_frames": snap["analyzed_frames"], "last_video_second": snap["video_second"],
+        "max_visible_vehicles": snap["max_vehicles"],
+        "max_visible_pedestrians": snap["max_people"],
+        "track_ids_observed": snap["unique_tracks"],
+        "mean_apparent_motion_px_s": round(snap.get("mean_apparent_speed", 0), 2),
+        "mean_calibrated_speed_kmh": (
+            round(snap.get("mean_calibrated_speed", 0), 2)
+            if snap.get("calibrated_speed_samples") else None
+        ),
+        "calibration_note": "Uniform m/pixel scale; not perspective corrected or certified speed.",
+        "scene_last_frame": snap.get("scene", {}),
+        "total_diagnostic_events": snap["total_events"],
+        "recent_events": snap.get("recent_events", []),
+        "limits": [
+            "Object IDs may change after occlusion.",
+            "Proximity is in image pixels, not real-world distances.",
+            "No validated accident prediction, pothole model or water detection.",
+            "Counts refer to sampled frames, not guaranteed unique pass-through counts."
+        ]
+    }
+    st.download_button(
+        "Download structured research summary (JSON) ↓",
+        data=json.dumps(report, ensure_ascii=False, indent=2),
+        file_name="smart-road-report.json", mime="application/json",
+        key="sr_summary_json"
+    )
     files = [
         (job.summary_file, "Frame observations", "video-frame-counts.csv"),
         (job.objects_file, "Object trajectories and motion", "object-observations.csv"),
