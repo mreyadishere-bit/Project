@@ -16,6 +16,7 @@ import streamlit as st
 
 from ui_theme import apply_theme
 from video_engine import VideoJob, VideoSettings, OUTPUTS
+from live_sources import canonical_youtube_live_url
 
 STATUS = {
     "starting": ("Starting", "blue"),
@@ -23,6 +24,7 @@ STATUS = {
     "running": ("Analyzing", "green"),
     "completed": ("Completed", "green"),
     "stopped": ("Stopped", "amber"),
+    "ended": ("Broadcast ended", "amber"),
     "error": ("Needs attention", "red"),
 }
 PRESETS = {
@@ -118,13 +120,12 @@ def source_and_settings(hosted: bool, running: bool):
     """Draw inputs and return validated form selections without starting jobs."""
     section_header("New analysis", "01 / Choose a source and processing profile")
     with st.container(border=True):
+        options = ["Upload video", "YouTube Live (beta)"]
+        if not hosted:
+            options += ["Local file", "PC camera"]
+        source_mode = st.radio("Video source", options, horizontal=True, disabled=running, key="sr_source")
         if hosted:
-            source_mode = "Upload video"
-            st.markdown("**Video source**")
-            st.caption("Cloud analysis · Runs on the server CPU · Video upload limits apply.")
-        else:
-            source_mode = st.radio("Video source", ["Upload video", "Local file", "PC camera"],
-                                   horizontal=True, disabled=running, key="sr_source")
+            st.caption("Cloud CPU · public live broadcasts may be inaccessible due to provider restrictions · no guaranteed low latency.")
         uploaded = None
         source = None
         label = ""
@@ -137,6 +138,14 @@ def source_and_settings(hosted: bool, running: bool):
             if uploaded:
                 label = uploaded.name
                 st.caption(f"Selected: {uploaded.name} · {uploaded.size / 1024**2:.1f} MB")
+        elif source_mode == "YouTube Live (beta)":
+            source = st.text_input(
+                "Public YouTube LIVE URL", placeholder="https://www.youtube.com/live/VIDEO_ID",
+                key="sr_youtube_url", disabled=running,
+                help="Use an active public YouTube live video you are authorized to analyze, not a channel or playlist URL."
+            )
+            label = "YouTube public live broadcast"
+            st.caption("Experimental live analysis, not synchronized with the YouTube player. Only a permitted, accessible broadcast can be processed. Stream availability and delay are outside our control.")
         elif source_mode == "Local file":
             value = st.text_input(
                 "Absolute file path on this computer", key="sr_local_path",
@@ -167,7 +176,7 @@ def source_and_settings(hosted: bool, running: bool):
                 confidence = st.slider("Minimum confidence", .1, .9, .35, .05, disabled=running)
             with c2:
                 all_classes = st.checkbox("Detect all supported YOLO classes", value=False, disabled=running)
-                save_video = st.checkbox("Export annotated video", value=False, disabled=running or source_mode == "PC camera")
+                save_video = st.checkbox("Export annotated video", value=False, disabled=running or source_mode in {"PC camera", "YouTube Live (beta)"})
                 if save_video:
                     st.caption("Uses significant disk space on long recordings.")
         with st.expander("Speed calibration (optional, research only)"):
@@ -192,6 +201,10 @@ def source_and_settings(hosted: bool, running: bool):
                         raise ValueError("Upload a video first.")
                     with st.spinner("Preparing video..."):
                         actual = str(save_uploaded_video(uploaded))
+                elif source_mode == "YouTube Live (beta)":
+                    if not source:
+                        raise ValueError("Paste an active public YouTube LIVE video URL.")
+                    actual = canonical_youtube_live_url(source)
                 elif source_mode == "Local file":
                     if not source or not Path(source).is_file():
                         raise ValueError("Choose a valid local video path.")
@@ -204,9 +217,9 @@ def source_and_settings(hosted: bool, running: bool):
                     actual, VideoSettings(
                         model_name=model, confidence=confidence, image_size=image_size,
                         analysis_fps=fps, all_classes=all_classes,
-                        save_video=bool(save_video and not isinstance(actual, int)),
+                        save_video=bool(save_video and source_mode not in {"PC camera", "YouTube Live (beta)"}),
                         meters_per_pixel=meters_per_pixel
-                    ), label=label
+                    ), label=label, source_kind="youtube" if source_mode == "YouTube Live (beta)" else "file"
                 )
                 st.rerun()
             except Exception as exc:
@@ -219,8 +232,15 @@ def video_stage(snap, job):
     with left:
         with st.container(border=True):
             if snap and snap.get("preview_jpeg"):
-                st.image(snap["preview_jpeg"], use_container_width=True)
-                st.caption(f"Last analyzed frame · {snap['video_second']:.1f}s in source · Object overlays are model estimates.")
+                show_best = bool(snap["status"] in {"completed", "stopped", "ended"} and
+                                 not snap.get("detected_now", {}).get("all_objects") and snap.get("best_preview_jpeg"))
+                st.image(snap["best_preview_jpeg"] if show_best else snap["preview_jpeg"], use_container_width=True)
+                if show_best:
+                    st.caption(f"Representative detected frame at {snap['best_preview_at']:.1f}s · The very last frame had no detected objects.")
+                else:
+                    st.caption(f"Latest analyzed frame · {snap['video_second']:.1f}s · Overlays are model estimates.")
+                if snap.get("source_kind") == "youtube":
+                    st.caption("LIVE SOURCE · Analyzed frames may lag behind the original broadcast; only the latest decoded frames are kept.")
             else:
                 st.markdown(
                     '<div class="sr-empty"><div class="sr-empty-icon">⌁</div>'
@@ -258,8 +278,16 @@ def video_stage(snap, job):
                         job.stop()
                         st.rerun(scope="fragment")
                 if snap["status"] == "loading model":
-                    st.info("First launch may download the YOLO model. Keep this page open.")
-    st.markdown('<div class="sr-footnote">Live = results update while processing. Processing FPS may be slower than the original video frame rate on CPU hardware.</div>', unsafe_allow_html=True)
+                    st.info("Loading the model or connecting to the public live feed. Live access can fail if YouTube blocks this server.")
+                if snap["status"] in {"completed", "stopped", "ended", "error"}:
+                    if st.button("＋ New analysis", use_container_width=True, key="sr_new_job"):
+                        st.session_state["video_job"] = None
+                        st.rerun()
+    if snap and snap.get("source_kind") == "youtube":
+        with st.expander("Original YouTube live player (independent, not synchronized)"):
+            st.video(job.source)
+            st.caption("The player and analysis have independent buffers and delays. This is not a frame-accurate synchronized comparison.")
+    st.markdown('<div class="sr-footnote">Live = updates while processing. On CPU, AI throughput may be much slower than the broadcast FPS. Provisional detection results are not driving alerts.</div>', unsafe_allow_html=True)
 
 
 def live_metrics(snap):
@@ -445,9 +473,36 @@ def video_tab():
         def monitor():
             current = st.session_state.get("video_job")
             state = current.snapshot() if current else None
+            if state and state["status"] in {"completed", "stopped", "ended"}:
+                st.success("Analysis finished · A visual results summary and the strongest detected frame appear below.")
             video_stage(state, current)
             live_metrics(state)
-
+            if state and state["analyzed_frames"]:
+                st.markdown("### Results overview")
+                totals = state.get("detected_class_totals", {})
+                st.caption(
+                    f"Frames with detections: {state.get('detected_frames', 0):,} of "
+                    f"{state['analyzed_frames']:,} analyzed · "
+                    f"Peak vehicles: {state['max_vehicles']} / frame · "
+                    f"Peak pedestrians: {state['max_people']} / frame · "
+                    f"Image-condition observations: {state['total_events']}"
+                )
+                if totals:
+                    summary = pd.DataFrame(
+                        [{"Object type": key, "Sampled-frame detections": val}
+                         for key, val in sorted(totals.items(), key=lambda entry: -entry[1])]
+                    )
+                    st.dataframe(summary, hide_index=True, use_container_width=True)
+                    st.caption("These totals count repeated detections across frames, NOT distinct vehicles passing the camera.")
+                else:
+                    st.info("No objects met the selected model and confidence threshold. Try a higher-quality camera angle or lower the threshold and re-run.")
+                if state.get("recent_frames"):
+                    df = pd.DataFrame(state["recent_frames"])
+                    st.line_chart(df.set_index("video_second")[["vehicles", "people"]],
+                                  height=210)
+                    st.caption("Latest sampled-frame counts. Navigate to Intelligence for detailed tracks and Events & reports for exports.")
+                if state["status"] in {"completed", "stopped", "ended"}:
+                    st.markdown("**Your files and downloadable reports:** select **Events & reports** in the navigation above.")
         monitor()
     elif selection == "Intelligence":
         @st.fragment(run_every=1.5 if active else None)
