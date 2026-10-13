@@ -15,6 +15,7 @@ import numpy as np
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from calibrated_scene_view import HTML
 from reconstruction import build_scene
+from traffic_control_sim import ControlInputs,simulate
 
 
 def build_fixture(target):
@@ -57,6 +58,10 @@ def build_fixture(target):
     },include_annotated_video=False)
     assert scene["metric_scene"] is not None
     assert any(len(p)>=7 for track in scene["tracks"] for p in track["points"])
+    # Browser fixture must include the same optional concept payload created
+    # by the actual Streamlit show_surveyed_scene route, not bypass it.
+    scene["control_scenario"]=simulate(ControlInputs(
+        seconds=120,lanes=2,vehicles_per_hour=480,pedestrians_per_hour=180))
     html=HTML.replace("__VIDEO__","").replace("__DATA__",
                   json.dumps(scene,separators=(",",":")).replace("</","<\\/"))
     Path(target).write_text(html,encoding="utf-8")
