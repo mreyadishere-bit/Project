@@ -134,10 +134,13 @@ def calibrated_tracks(objects_path, calibration:RoadCalibration, width:int, heig
             "last_second":items[-1]["video_second"],
             "points":paths[(kind,ident)],
         })
+    vehicle_medians=[t["median_speed_kmh"] for t in tracks if t["class"]!="person"]
+    person_medians=[t["median_speed_kmh"] for t in tracks if t["class"]=="person"]
     return {
         "status":"surveyed_planar_estimates",
         "tracks":tracks,
-        "median_track_speed_kmh":round(median([t["median_speed_kmh"] for t in tracks]),1) if tracks else None,
+        "median_track_speed_kmh":round(median(vehicle_medians),1) if vehicle_medians else None,
+        "median_pedestrian_speed_kmh":round(median(person_medians),1) if person_medians else None,
         "rows_scanned":rows,
         "accepted_track_count":len(tracks),
         "rejected":dict(ignored),
