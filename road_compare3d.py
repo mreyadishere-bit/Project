@@ -37,6 +37,11 @@ button:hover{background:#e9f2ff}
 .viewport canvas{position:absolute;inset:0;z-index:1;cursor:grab}
 .viewport canvas{cursor:grab}
 .panelnote{padding:11px 15px;border-top:1px solid #e8edf3;color:#8290a2;min-height:54px;line-height:1.5;font-size:11px}
+.model-loading{position:absolute;inset:0;z-index:7;display:flex;flex-direction:column;gap:11px;align-items:center;justify-content:center;background:#e9f1f7;color:#405b77;font-size:13px;text-align:center;padding:24px;transition:opacity .25s ease}
+.model-loading[hidden]{display:none}
+.model-loading .spinner{width:30px;height:30px;border:3px solid #c7d9ea;border-top-color:#2878ce;border-radius:50%;animation:road-spin .9s linear infinite}
+@keyframes road-spin{to{transform:rotate(360deg)}}
+.model-loading .loading-sub{font-size:11px;color:#7890a4;max-width:260px;line-height:1.5}
 .video-fallback{display:none;position:absolute;inset:0;align-items:center;justify-content:center;padding:25px;background:#f0f5fa;color:#46617a;text-align:center;flex-direction:column;gap:12px}
 .video-fallback input{max-width:100%;font-size:11px}
 .playback{display:flex;align-items:center;gap:10px;margin:13px 0;flex-wrap:wrap}
@@ -70,7 +75,8 @@ button:hover{background:#e9f2ff}
   </section>
   <section class="panel">
     <div class="panelhead"><strong>02 · Camera-matched modified 3D</strong><span id="scenarioName">Scenario</span></div>
-    <div class="viewport" id="simulation"><img class="matched-background" id="matchedBackground" alt="Background extracted from the actual road video" /></div>
+    <div class="viewport" id="simulation"><img class="matched-background" id="matchedBackground" alt="Background extracted from the actual road video" />
+<div class="model-loading" id="modelLoading" role="status" aria-live="polite"><div class="spinner" aria-hidden="true"></div><strong id="loadingStage">Building your 3D road…</strong><span class="loading-sub">Loading the road image, vehicles and camera view. Please wait.</span></div></div>
     <div class="panelnote">Source View: actual road image with 3D tracked vehicles and visual interventions. Orbit / Top: approximate 3D geometry.</div>
   </section>
 </div>
@@ -87,9 +93,12 @@ button:hover{background:#e9f2ff}
 <script id="sceneData" type="application/json">__SCENE__</script>
 <script type="module">
 try {
+ const loadingStage=document.getElementById("loadingStage");
+ if(loadingStage)loadingStage.textContent="Loading 3D graphics…";
  const THREE=await import("three");
  const {OrbitControls}=await import("three/addons/controls/OrbitControls.js");
  const data=JSON.parse(document.getElementById("sceneData").textContent);
+ if(loadingStage)loadingStage.textContent="Matching road camera…";
  const video=document.getElementById("sourceVideo");
  const frameWidth=Number(data.originalDimensions?.[0])||960;
  const frameHeight=Number(data.originalDimensions?.[1])||540;
@@ -131,6 +140,9 @@ try {
  const viewport=document.getElementById("simulation");
  const matchedBackground=document.getElementById("matchedBackground");
  matchedBackground.src=data.backgroundImage;
+ const backgroundReady=matchedBackground.decode?
+    matchedBackground.decode().then(()=>true).catch(()=>false):
+    Promise.resolve(true);
  const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:"low-power",alpha:true});
  renderer.setClearColor(0xcadce7,0);
  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.6));
@@ -441,6 +453,7 @@ try {
     document.getElementById("camera").value="source";chooseCamera("source");
  };
  applyIntervention();
+ let readyNotified=false;
  function animate(){
     // Absolutely no independent simulation clock. When the source is paused,
     // the modified 3D agents freeze at the same original timestamp.
@@ -450,6 +463,18 @@ try {
     clock.textContent=labelTime(t);
     document.getElementById("timeText").textContent=labelTime(t)+" / "+labelTime(d);
     update3D(t);controls.update();renderer.render(scene,camera);
+    if(!readyNotified){
+      readyNotified=true;
+      const panel=document.getElementById("modelLoading");
+      if(loadingStage)loadingStage.textContent="Finishing scene…";
+      backgroundReady.then(ok=>{
+        if(panel)panel.hidden=true;
+        if(!ok){
+          const hint=document.getElementById("comparisonDetail");
+          if(hint)hint.textContent+=" Camera background did not decode; some road details might not appear.";
+        }
+      });
+    }
     requestAnimationFrame(animate);
  }
  requestAnimationFrame(animate);
@@ -459,6 +484,8 @@ try {
  el.textContent=message;
  const panel=document.getElementById("simulation");
  if(panel){
+   const loader=document.getElementById("modelLoading");
+   if(loader)loader.hidden=true;
    const overlay=document.createElement("div");
    overlay.setAttribute("role","alert");
    overlay.style.cssText="position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:22px;background:#fff1ee;color:#9f302c;font-size:14px;text-align:center;line-height:1.6";
