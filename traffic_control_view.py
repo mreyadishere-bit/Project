@@ -54,8 +54,8 @@ video,canvas{display:block;height:100%;width:100%;object-fit:contain}
 <div class="foot">Observe the real problem at the indicated timestamps. The video has not been altered.</div></div>
 <div class="card"><div class="head"><strong>02 · 3D intervention concept</strong><small>Modeled road, signals, cars & pedestrians</small></div>
 <div class="screen" id="simulation"><div class="loading" id="loading"><div class="spinner"></div><strong>Building the 3D environment…</strong><div class="muted">Loading vehicles, traffic controls and the simulation</div></div></div>
-<div class="status"><span id="phase" class="phase"></span><span id="control" class="muted"></span></div>
-<div class="foot">Cars obey stop lines and signals. Pedestrians wait for WALK, cross, then traffic resumes after clearance. Assumed layout and flows.</div></div>
+<div class="status"><span id="phase" class="phase"></span><span id="control" class="muted"></span><span id="agents" class="muted" aria-live="off"></span></div>
+<div class="foot">Notice the crosswalk, stop line and changing traffic signals. The vehicles queue for WALK, pedestrians cross, and driving resumes after clearance. This is an illustrative road design — not reconstructed footage.</div></div>
 </div>
 <div class="timeline"><button id="play">Pause</button><span id="time">00:00</span>
 <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Simulation timeline"/><span class="muted" id="duration"></span>
@@ -113,7 +113,8 @@ try{
  for(const x of [-66,-56,-46,-36,-26,-16,14,24,34,44,54,64])
    obj(new THREE.BoxGeometry(4,.04,.11),white,x,.10,0);
  // Zebra crossing perpendicular to the vehicle travel direction.
- for(let x=-3.3;x<=3.3;x+=.85)obj(new THREE.BoxGeometry(.47,.06,13),white,x,.13,0);
+ for(let z=-5.75;z<=5.75;z+=1.15)
+   obj(new THREE.BoxGeometry(5.2,.06,.66),white,0,.13,z);
  obj(new THREE.BoxGeometry(.23,.07,13),white,-10,.14,0);
  for(const x of [-67,67])for(const z of [-7,7]){
    obj(new THREE.CylinderGeometry(.10,.14,3,8),material(0x6d6452),x,1.7,z);
@@ -153,6 +154,10 @@ try{
  const carObjects=new Map(),peopleObjects=new Map();
  let clock=0,playing=true,previous=performance.now(),top=false;
  const frames=D.managed.frames;
+ // The first snapshot may precede the first randomly generated vehicle.
+ // Start at the first moment with active traffic instead of presenting a blank road.
+ const firstActive=frames.find(f=>f.cars.length>0&&f.t>0);
+ if(firstActive)clock=firstActive.t;
  function renderFrame(f){
    const seenCars=new Set(),seenPeople=new Set();
    for(const [id,x,lane,speed] of f.cars){
@@ -169,6 +174,10 @@ try{
    }
    for(const [id,body] of carObjects)if(!seenCars.has(id))body.visible=false;
    for(const [id,body] of peopleObjects)if(!seenPeople.has(id))body.visible=false;
+   document.getElementById("agents").textContent=
+     f.cars.length+" vehicles · "+
+     f.people.filter(p=>p[2]==="crossing").length+" crossing · "+
+     f.people.filter(p=>p[2]==="waiting").length+" waiting";
    const vehicleGo=f.phase==="vehicle_green";
    const vehicleWarn=f.phase==="vehicle_yellow";
    bulbs.forEach((bulb,i)=>{
@@ -215,7 +224,7 @@ try{
  }
  document.getElementById("toggle").onclick=toggle;
  document.getElementById("play").onclick=toggle;
- document.getElementById("restart").onclick=()=>{clock=0;previous=performance.now()};
+ document.getElementById("restart").onclick=()=>{clock=firstActive?.t||0;previous=performance.now()};
  document.getElementById("seek").oninput=e=>{clock=Number(e.target.value)/1000*D.inputs.seconds;previous=performance.now()};
  document.getElementById("topview").onclick=()=>{
    top=!top;cam.position.set(top?1:18,top?95:20,top?1:32);
