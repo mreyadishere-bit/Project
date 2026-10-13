@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import csv
 import json
+import subprocess
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -27,6 +28,14 @@ def build_fixture(target):
     cv2.line(frame,(815,h-2),(518,130),(244,228,196),8,cv2.LINE_AA)
     source=root/"survey-original.jpg"
     cv2.imwrite(str(source),frame,[cv2.IMWRITE_JPEG_QUALITY,88])
+    original_video=root/"survey-original.webm"
+    subprocess.run([
+       "ffmpeg","-hide_banner","-loglevel","error","-y",
+       "-loop","1","-framerate","12","-i",str(source),
+       "-t","5","-an","-c:v","libvpx","-deadline","realtime",
+       "-cpu-used","6","-b:v","350k",str(original_video)
+    ],check=True,timeout=35)
+    video_uri="data:video/webm;base64,"+base64.b64encode(original_video.read_bytes()).decode("ascii")
     F=w/(2*tan(radians(70)/2))
     K=np.array([[F,0,w/2],[0,F,h/2],[0,0,1]],np.float64)
     r=np.array([.08,-.04,.05]);t=np.array([-3,-12,85.],np.float64)
@@ -62,7 +71,7 @@ def build_fixture(target):
     # by the actual Streamlit show_surveyed_scene route, not bypass it.
     scene["control_scenario"]=simulate(ControlInputs(
         seconds=120,lanes=2,vehicles_per_hour=480,pedestrians_per_hour=180))
-    html=HTML.replace("__VIDEO__","").replace("__DATA__",
+    html=HTML.replace("__VIDEO__",video_uri).replace("__DATA__",
                   json.dumps(scene,separators=(",",":")).replace("</","<\\/"))
     Path(target).write_text(html,encoding="utf-8")
     print(f"Wrote surveyed camera fixture {target}, RMSE={scene['metric_scene']['reprojection_rmse_px']} px")
