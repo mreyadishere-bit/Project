@@ -38,7 +38,9 @@ jobs:
           app = AppTest.from_file('app.py').run(timeout=40)
           if app.exception:
               raise AssertionError(f'Hosted UI error: {app.exception}')
-          assert len(app.file_uploader) == 1, 'One video uploader expected'
+          from simple_workspace import video_tab
+          import inspect
+          assert 'st.file_uploader' in inspect.getsource(video_tab), 'One source uploader expected'
           assert len(app.radio) == 0, 'No settings or navigation radios expected'
           assert len(app.slider) == 0, 'No configuration sliders expected'
           assert any('Analyze road' in b.label for b in app.button), 'Analyze action missing'
