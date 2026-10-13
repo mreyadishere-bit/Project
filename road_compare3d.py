@@ -429,8 +429,17 @@ try {
  }
  requestAnimationFrame(animate);
 } catch(error){
+ const message="3D scene unavailable: "+String(error).slice(0,220);
  const el=document.getElementById("error");el.style.display="block";
- el.textContent="Unable to start video/3D comparison: "+String(error).slice(0,220);
+ el.textContent=message;
+ const panel=document.getElementById("simulation");
+ if(panel){
+   const overlay=document.createElement("div");
+   overlay.setAttribute("role","alert");
+   overlay.style.cssText="position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:22px;background:#fff1ee;color:#9f302c;font-size:14px;text-align:center;line-height:1.6";
+   overlay.textContent=message;
+   panel.appendChild(overlay);
+ }
  console.error(error);
 }
 </script></body></html>'''
