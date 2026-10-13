@@ -47,6 +47,19 @@ class YouTubeLinkTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "not currently live"):
                 resolve_youtube_live("https://youtu.be/jfKfPfyJRdk")
 
+    def test_youtube_antibot_error_is_clear_without_authentication_advice(self):
+        module = types.ModuleType("yt_dlp")
+        class FakeYDL:
+            def __init__(self, opts): pass
+            def __enter__(self): return self
+            def __exit__(self, *args): return None
+            def extract_info(self, url, download=False):
+                raise RuntimeError("Sign in to confirm you're not a bot")
+        module.YoutubeDL = FakeYDL
+        with patch.dict(sys.modules, {"yt_dlp": module}):
+            with self.assertRaisesRegex(RuntimeError, "blocked automated video access"):
+                resolve_youtube_live("https://www.youtube.com/watch?v=FWvIPfxK5Jo")
+
     def test_extracts_live_https_stream(self):
         module = types.ModuleType("yt_dlp")
         class FakeYDL:
