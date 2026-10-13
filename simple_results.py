@@ -75,7 +75,7 @@ def show_results(job,snap):
     if st.button("Create my road simulation",type="primary",use_container_width=True,key="clean_sim_"+job.id):
         st.session_state["clean_sim_active_"+job.id]=True
     if st.session_state.get("clean_sim_active_"+job.id):
-        from reconstruction_ui import render_reconstruction
+        from stable_scene import render_reconstruction
         render_reconstruction(job,snap)
 
     with st.expander("Download data & inspect measurement limits"):
