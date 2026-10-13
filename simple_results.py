@@ -4,7 +4,7 @@ import json
 import csv
 import streamlit as st
 import pandas as pd
-from insight_engine import explain_video
+from road_advice import road_report
 
 
 def _summary_curve(path,max_items=400):
@@ -28,7 +28,7 @@ def _summary_curve(path,max_items=400):
 def show_results(job,snap):
     evidence=snap.get("evidence") or {}
     crossings=snap.get("crossings") or {}
-    story=explain_video(evidence,snap.get("label","video"))
+    story=road_report(evidence,snap.get("label","video"),getattr(job,"objects_file",None))
     st.markdown("## Your road, understood.")
     st.caption("Results are based on detected objects across the uploaded video—not assumptions about an unseen accident.")
 
@@ -43,7 +43,8 @@ def show_results(job,snap):
         st.warning("Detection confidence is low for this footage: objects were not found in most sampled frames. The number of vehicles is likely an undercount. Do not treat these measurements as ground truth.")
     with st.container(border=True):
         st.markdown("### What the AI observed")
-        st.write(story["description"])
+        st.write(story["summary"])
+        st.caption("Road context: "+story["context"]["label"]+" · "+story["context"]["basis"])
         st.caption("Cars crossing the yellow line, objects visible simultaneously and tracking IDs are different counts.")
 
     st.markdown("### Your analyzed video")
@@ -64,27 +65,35 @@ def show_results(job,snap):
         st.line_chart(curve,height=240,use_container_width=True)
     st.caption("Shows visible objects in sampled frames, not how many distinct cars passed.")
 
-    st.markdown("### What could improve this road?")
+    st.markdown("### Recommendations supported by this footage")
+    st.caption("Only video-backed review suggestions appear here. No automatic pedestrian crossing or speed limit is proposed without supporting field evidence.")
     for i,r in enumerate(story["recommendations"],1):
         with st.container(border=True):
-            st.markdown(f"**{i}. {r['title']}**")
+            st.markdown(f"#### {i}. {r['title']}")
+            st.markdown("**What we actually measured**")
+            st.write(r["evidence"])
+            st.markdown("**Why it matters**")
             st.write(r["reason"])
-            st.caption("Consider: "+r["action"])
-            st.caption("Must verify on site: "+r["verify"])
+            st.markdown("**Suggested next step**")
+            st.write(r["action"])
+            st.caption("Expected benefit: "+r["expected_benefit"])
+            st.caption("Evidence status: "+r["confidence"]+" · Priority: "+r["priority"])
+            st.caption("Check before construction: "+r["verify"])
 
     st.markdown("### Explore the road in 3D")
-    st.caption("Compare recorded positions against a hypothetical improvement in one camera-aligned 3D scene. A single video cannot reconstruct hidden objects or certify the result.")
+    st.caption("Build a low-poly 3D road environment with curved lanes, barriers, cars, trees and camera orbit/top views. Vehicle tracks use recorded timestamps; geometry is approximate.")
     if st.button("Create my road simulation",type="primary",use_container_width=True,key="clean_sim_"+job.id):
         st.session_state["clean_sim_active_"+job.id]=True
     if st.session_state.get("clean_sim_active_"+job.id):
-        from stable_scene import render_reconstruction
+        from road_world3d import render_reconstruction
         render_reconstruction(job,snap)
 
     with st.expander("Download data & inspect measurement limits"):
         report={"source":snap["label"],"status":snap["status"],
                 "crossings":crossings,"evidence":evidence,
                 "recommendations":story["recommendations"],
-                "review_needed":"Single-camera AI can miss vehicles and cannot establish metric speed or 3D dimensions without calibration."}
+                "review_needed":"Single-camera AI can miss vehicles and cannot establish metric speed or 3D dimensions without calibration.",
+                "context":story["context"],"kinematic_evidence":story["measurements"]}
         st.download_button("Full report (JSON)",json.dumps(report,ensure_ascii=False,indent=2),
                            file_name="road-report.json",mime="application/json")
         for path in (job.objects_file,job.crossings_file,job.summary_file,job.events_file):
