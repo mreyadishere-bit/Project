@@ -20,10 +20,11 @@ def context_from_source(source: str, evidence: dict) -> dict:
     highway = any(w in words.split() for w in ("highway", "freeway", "motorway", "autobahn", "expressway"))
     label = "Possible highway / divided road" if highway else "Road type not established"
     return {
-        "kind": "highway_hint" if highway else "unknown",
-        "label": label,
-        "basis": "The source file's title suggests a highway; not independently verified from pixels." if highway
-                 else "No reliable road classification is available from this recording.",
+        "kind": "unknown",
+        "label": "Road type not established from video",
+        "source_title_hint": "highway" if highway else None,
+        "basis": "The filename suggests a highway, but the road is NOT independently classified." if highway
+                 else "No reliable roadway classification is available from this recording.",
         "pedestrian_infrastructure_claim_allowed": False,
     }
 
