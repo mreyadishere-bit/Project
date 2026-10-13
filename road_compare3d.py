@@ -119,13 +119,13 @@ try {
  }
  const fallback=document.getElementById("videoFallback");
  const local=document.getElementById("localVideo");
- let localUrl=null,intervention=data.initialOption||"none",speedRatio=1,lastFrame=-1;
- const opts=[{id:"none",title:"No proposed intervention"},...data.options];
- for(const choice of [{id:"markings",title:"Review enhanced lane markings (unverified)"},
-                      {id:"lighting",title:"Review additional lighting (unverified)"},
-                      {id:"speed_review",title:"Review warning sign (unverified)"}]){
-    if(!opts.some(o=>o.id===choice.id))opts.push(choice);
- }
+ let localUrl=null,intervention=data.initialOption||"inspection",speedRatio=1,lastFrame=-1;
+ const opts=data.options||[];
+ if(!opts.length)opts.push({id:"inspection",title:"Inspect original footage",
+    observed:"No verified hazards found yet.",change:"Show the original video without invented road edits.",
+    why:"The available evidence is not sufficient to specify a road change.",
+    validate:"Compare the video with manual observations and real road measurements.",
+    claim:"No predicted benefit.",evidence_based:false});
  const selector=document.getElementById("intervention");
  for(const option of opts){const el=document.createElement("option");el.value=option.id;el.textContent=option.title;selector.append(el)}
  selector.value=intervention;
@@ -152,6 +152,13 @@ try {
  const viewport=document.getElementById("simulation");
  const matchedBackground=document.getElementById("matchedBackground");
  matchedBackground.src=data.backgroundImage;
+ const liveFrame=document.getElementById("liveFrame");
+ const videoCtx=liveFrame.getContext("2d",{alpha:false});
+ const visualOverlays=document.getElementById("visualOverlays");
+ const overlayCtx=visualOverlays.getContext("2d");
+ liveFrame.width=visualOverlays.width=frameWidth;
+ liveFrame.height=visualOverlays.height=frameHeight;
+ const sceneChip=document.getElementById("scenarioChip");
  const backgroundReady=matchedBackground.decode?
     matchedBackground.decode().then(()=>true).catch(()=>false):
     Promise.resolve(true);
@@ -381,6 +388,11 @@ try {
     controls.enabled=!aligned;
     environment.visible=!aligned;
     matchedBackground.style.display=aligned?"block":"none";
+    liveFrame.style.display=aligned?"block":"none";
+    visualOverlays.style.display=aligned?"block":"none";
+    renderer.domElement.style.display=aligned?"none":"block";
+    sceneChip.style.display=aligned?"block":"none";
+    document.getElementById("ratio").disabled=aligned;
     scene.background=aligned?null:new THREE.Color(0xc8dfe9);
     renderer.setClearColor(0xc8dfe9,aligned?0:1);
    if(view==="source"){
@@ -509,11 +521,17 @@ try {
     }
  }
  function applyIntervention(){
-   const name=selector.value;
-   enhanced.visible=name==="markings";
-   lighting.visible=name==="lighting";
-   signGroup.visible=name==="speed_review";
-   document.getElementById("scenarioName").textContent=selector.selectedOptions[0]?.textContent||"Proposed";
+    const chosen=opts.find(x=>x.id===selector.value)||opts[0];
+    enhanced.visible=chosen.id==="markings";
+    lighting.visible=chosen.id==="visibility";
+    signGroup.visible=false;
+    document.getElementById("scenarioName").textContent=chosen.title;
+    document.getElementById("whatObserved").textContent=chosen.observed;
+    document.getElementById("whatChanges").textContent=chosen.change;
+    document.getElementById("whyUseful").textContent=chosen.why;
+    document.getElementById("verifyFirst").textContent=chosen.validate;
+    sceneChip.textContent=(chosen.evidence_based?"OBSERVED / ":"CONCEPT / ")+chosen.claim;
+    liveFrame.style.filter=chosen.id==="visibility"?"brightness(1.28) contrast(1.12) saturate(1.08)":"none";
  }
  function resize(){
     const rect=viewport.getBoundingClientRect();
@@ -543,7 +561,7 @@ try {
  document.getElementById("ratio").oninput=e=>{speedRatio=Number(e.target.value)/100;document.getElementById("ratioText").textContent=e.target.value+"%"};
  document.getElementById("camera").onchange=e=>chooseCamera(e.target.value);
  document.getElementById("reset").onclick=()=>{
-    selector.value="none";selector.dispatchEvent(new Event("change"));
+    selector.value=data.initialOption||opts[0].id;selector.dispatchEvent(new Event("change"));
     speedRatio=1;document.getElementById("ratio").value=100;document.getElementById("ratioText").textContent="100%";
     document.getElementById("camera").value="source";chooseCamera("source");
  };
@@ -621,13 +639,14 @@ def render_reconstruction(job, snapshot):
                          getattr(job,"objects_file",None))
     with st.spinner("Preparing the ORIGINAL video for synchronized comparison..."):
         video_uri, video_status = prepare_source_video(job)
-    options = _simulation_options(report)
-    from scene_background import background_photo
-    with st.spinner("Matching the source camera and removing many moving vehicles from the reference..."):
-        background_uri, background_origin = background_photo(job, scene["image"])
+    from road_scenarios import make_scenarios
+    scenario_package=make_scenarios(report,snapshot.get("evidence",{}) or {})
+    options=scenario_package["scenarios"]
+    background_uri=scene["image"]
+    background_origin="Original live video frames, identical on both panels"
     data = {
         "tracks": scene["tracks"], "options": options,
-        "initialOption": options[0]["id"] if options else "none",
+        "initialOption": scenario_package["initial"],
         "duration": float(snapshot.get("duration_seconds") or scene["duration"]),
         "videoStatus": video_status,
         "originalDimensions": [scene["width"],scene["height"]],
@@ -639,4 +658,4 @@ def render_reconstruction(job, snapshot):
     st.iframe(html,height="content",alt="Original recorded video versus modified low-poly 3D highway simulation with synchronized playback and source-camera image reprojection")
     if not video_uri:
         st.info("Large or unavailable original recording: select the same video from your device inside the comparison. This allows local synchronized playback without exposing the upload publicly.")
-    st.caption("Source View uses the actual road camera background ("+background_origin+") with source-aligned 3D vehicles and editable changes. Orbit and Top View use estimated volumetric geometry; exact road depth and unseen surfaces remain unknown.")
+    st.caption("Video-matched mode copies each current frame of the same original recording; no median-blended background and no duplicate 3D cars. 3D exploration is an approximate illustration, not a surveyed reconstruction.")
