@@ -6,6 +6,7 @@ while Streamlit reads bounded snapshots. Not an accident or speed estimator.
 from __future__ import annotations
 
 import csv
+import os
 import subprocess
 import shutil
 from collections import Counter, deque
@@ -121,7 +122,7 @@ class LatestCameraFrames:
 @dataclass(frozen=True)
 class VideoSettings:
     model_name: str = "yolo26n.pt"
-    confidence: float = 0.35
+    confidence: float = 0.18
     image_size: int = 640
     analysis_fps: int = 5   # file frames analysed per video second (approx.)
     all_classes: bool = False
@@ -130,7 +131,7 @@ class VideoSettings:
     road_calibration: RoadCalibration | None = None
     camera_fov_deg: float = 70.0  # needs real intrinsics for accurate pose
     count_line_fraction: float = .50
-    tracker: str = "botsort.yaml"
+    tracker: str = "traffic_botsort.yaml"
 
 
 class VideoJob:
@@ -144,7 +145,7 @@ class VideoJob:
             raise ValueError("Invalid analysis rate")
         if not 30 <= settings.camera_fov_deg <= 120:
             raise ValueError("Camera FOV outside supported range")
-        if settings.tracker not in {"botsort.yaml", "bytetrack.yaml"}:
+        if settings.tracker not in {"botsort.yaml", "bytetrack.yaml", "traffic_botsort.yaml"}:
             raise ValueError("Invalid tracker")
         if not .05 <= settings.count_line_fraction <= .95:
             raise ValueError("Invalid counting-line position")
@@ -208,6 +209,12 @@ class VideoJob:
         self.recent_frames: deque[dict] = deque(maxlen=180)
         self.recent_objects: deque[dict] = deque(maxlen=80)
         self.processing_fps = 0.0
+        self.inference_ms_avg = 0.0
+        self.empty_detection_frames = 0
+        self.detection_confidence_sum = 0.0
+        self.detection_count = 0
+        self.actual_source_fps = 0.0
+        self.effective_sample_fps = 0.0
         self.scene = {}
         self.recent_events: deque[dict] = deque(maxlen=100)
         self.total_events = 0
@@ -256,6 +263,13 @@ class VideoJob:
                 "max_people": self.max_people, "unique_tracks": len(self.unique_track_ids),
                 "recent_frames": list(self.recent_frames), "recent_objects": list(self.recent_objects),
                 "processing_fps": self.processing_fps, "device": self.device,
+                "inference_ms_avg": round(self.inference_ms_avg,1),
+                "empty_detection_frames": self.empty_detection_frames,
+                "average_detection_confidence": round(self.detection_confidence_sum/self.detection_count,3) if self.detection_count else None,
+                "source_video_fps": self.actual_source_fps,
+                "effective_sample_fps": self.effective_sample_fps,
+                "requested_sample_fps": self.settings.analysis_fps,
+                "model_name": self.settings.model_name,
                 "scene": dict(self.scene), "recent_events": list(self.recent_events),
                 "total_events": self.total_events, "mean_apparent_speed": self.mean_apparent_speed,
                 "mean_calibrated_speed": self.mean_calibrated_speed,
@@ -290,6 +304,9 @@ class VideoJob:
             from ultralytics import YOLO
             import torch
             device = "0" if torch.cuda.is_available() else "cpu"
+            if device == "cpu" and hasattr(torch, "set_num_threads"):
+                # Avoid torch oversubscribing small shared CPU VMs.
+                torch.set_num_threads(max(1,min(4,os.cpu_count() or 2)))
             with self._lock:
                 self.device = "GPU (CUDA)" if device == "0" else "CPU"
                 self.status = "loading model"
@@ -325,6 +342,9 @@ class VideoJob:
                 video_fps = 30.0
             total_frames = 0 if self.is_live else max(0, int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0))
             frame_step = max(1, round(video_fps / self.settings.analysis_fps)) if not self.is_live else 1
+            with self._lock:
+                self.actual_source_fps = round(video_fps,2)
+                self.effective_sample_fps = round(video_fps/frame_step,2) if not self.is_live else min(5,self.settings.analysis_fps)
             model_classes = model.names
             if self.settings.all_classes:
                 class_ids = None
@@ -394,9 +414,12 @@ class VideoJob:
                     if self.frame_width == 0:
                         self.frame_width, self.frame_height = frame.shape[1], frame.shape[0]
                         cv2.imwrite(str(self.reference_frame_file),frame,[cv2.IMWRITE_JPEG_QUALITY,82])
-                    tracked = model.track(frame, persist=True, tracker=self.settings.tracker, classes=class_ids,
+                    started_inference = time.monotonic()
+                    tracker_config = str(BASE / "traffic_botsort.yaml") if self.settings.tracker == "traffic_botsort.yaml" else self.settings.tracker
+                    tracked = model.track(frame, persist=True, tracker=tracker_config, classes=class_ids,
                                           imgsz=self.settings.image_size, conf=self.settings.confidence,
                                           device=device, verbose=False)[0]
+                    inference_ms = (time.monotonic()-started_inference)*1000
                     detections = []
                     apparent_speeds = []
                     calibrated_speeds = []
@@ -486,6 +509,13 @@ class VideoJob:
                     times.append(time.monotonic())
                     elapsed = times[-1] - times[0] if len(times) > 1 else 0
                     with self._lock:
+                        self.empty_detection_frames += not bool(detections)
+                        self.detection_confidence_sum += sum(d["confidence"] for d in detections)
+                        self.detection_count += len(detections)
+                        self.inference_ms_avg = (
+                            (self.inference_ms_avg * self.analyzed_frames + inference_ms)
+                            / (self.analyzed_frames + 1)
+                        )
                         self.preview_jpeg = buffer.tobytes() if encoded_ok else None
                         if counts["all_objects"] > self.best_detection_count and encoded_ok:
                             self.best_detection_count = counts["all_objects"]
