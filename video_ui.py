@@ -243,6 +243,14 @@ def video_stage(snap, job):
                 st.warning("YouTube player preview only — 0 frames reached the AI. This is NOT an analyzed video.")
                 st.video(job.source)
                 st.caption("Playback can be available in your browser even when YouTube blocks server-side frame extraction.")
+            elif snap and snap.get("source_kind") == "youtube" and snap.get("status") == "running" and not snap.get("preview_jpeg"):
+                st.info("Connecting to live video frames through FFmpeg. The AI has not received an image yet. If decoding cannot start, the job will report an error rather than displaying imaginary detections.")
+                st.markdown(
+                    '<div class="sr-empty" style="min-height:260px"><div class="sr-empty-icon">⌁</div>'
+                    '<strong>Waiting for the first decoded frame</strong>'
+                    '<p>YouTube playback and server-side AI processing are independent.</p></div>',
+                    unsafe_allow_html=True,
+                )
             elif snap and snap.get("preview_jpeg"):
                 show_best = bool(snap["status"] in {"completed", "stopped", "ended"} and
                                  not snap.get("detected_now", {}).get("all_objects") and snap.get("best_preview_jpeg"))
