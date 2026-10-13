@@ -82,7 +82,11 @@ try{
  const controls=new OrbitControls(camera,renderer.domElement);
  controls.enableDamping=true;
  const center=new T.Vector3(metric.width_m/2,0,metric.length_m/2);
- controls.target.copy(center);controls.update();
+ // Preserve calibrated camera orientation in SOURCE mode. Re-aiming Orbit
+ // controls at the road centre would destroy source-image reprojection.
+ const sourceForward=new T.Vector3(0,0,-1).applyQuaternion(homeQuaternion);
+ const sourceTarget=homePosition.clone().addScaledVector(sourceForward,30);
+ controls.target.copy(sourceTarget);controls.update();
  // The actual road appearance is warped from the original source pixels.
  const texture=new T.TextureLoader().load(metric.texture);
  texture.colorSpace=T.SRGBColorSpace;
@@ -161,7 +165,7 @@ try{
  new ResizeObserver(resize).observe(view);resize();
  document.getElementById("sourceview").onclick=()=>{
    camera.position.copy(homePosition);camera.quaternion.copy(homeQuaternion);
-   controls.target.copy(center);controls.update();
+   controls.target.copy(sourceTarget);controls.update();
  };
  document.getElementById("top").onclick=()=>{
    camera.position.set(metric.width_m/2,Math.max(28,metric.length_m*1.15),metric.length_m/2+.01);
