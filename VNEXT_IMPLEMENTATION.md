@@ -27,6 +27,26 @@ This release is a working research prototype, not a certified road safety assess
 - **Preservation**: the previous main branch is backed up as
   backup-before-road-safety-vnext-20261013.
 
+## Continued improvements
+
+- Evidence review now includes a **Watch supporting video at timestamp** action.
+  It prefers the unchanged playable source recording, and distinctly labels
+  annotated-video fallback whenever original playback is not available.
+- Recurrent review proposals now require at least two independent temporal
+  windows and sufficient frames. They can suggest studying an appropriate
+  pedestrian-access treatment, but NEVER assert an unmeasured conflict.
+- The working concept supports 1–3 assumed same-direction approach lanes.
+  Car lane assignments, queues, and visual lane markings all update together.
+- A visible 3D countdown/control-status panel shows changing traffic phases and
+  how many cars are on screen versus pedestrians walking/waiting.
+- Camera view is focused closer to the crossing and the zebra marking direction
+  is physically consistent with pedestrians crossing across the carriageway.
+- CI stress tests multiple seeds/flow settings and lane counts.
+- Real Playwright/Chromium testing loads both an actual browser-decodable VP8
+  source video and the right-hand WebGL scene, exercising WALK/STOP, pause and
+  top-view. This validates browser mechanics but NOT accuracy against the
+  uploaded road.
+
 ## Browser verification procedure
 
 1. Upload and analyze video on the hosted site.
