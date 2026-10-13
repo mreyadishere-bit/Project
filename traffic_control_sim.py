@@ -27,6 +27,7 @@ class ControlInputs:
     speed_kmh: int = 36
     vehicles_per_hour: int = 600
     pedestrians_per_hour: int = 240
+    lanes: int = 2
     green_s: int = 36
     walk_s: int = 16
     clearance_s: int = 12
@@ -74,7 +75,7 @@ def _demand(settings):
     ped_times = _arrivals(settings.pedestrians_per_hour, settings.seconds,
                           random.Random(settings.seed + 17), first=-3.0)
     rng = random.Random(settings.seed + 31)
-    return [(i,t,rng.randrange(2)) for i,t in enumerate(car_times)], [
+    return [(i,t,rng.randrange(settings.lanes)) for i,t in enumerate(car_times)], [
         (i,t) for i,t in enumerate(ped_times)]
 
 
@@ -131,7 +132,7 @@ def _simulate(settings, car_demand, ped_demand, *, controlled):
                     finished_ped_waits.append(p["start"]-p["arrival"])
         crossing_people = any(p["status"]=="crossing" for p in walkers)
         new_cars = []
-        for lane in (0,1):
+        for lane in range(settings.lanes):
             leaders = sorted((c for c in cars if c["lane"]==lane),
                              key=lambda c:-c["x"])
             lead = None
@@ -206,6 +207,7 @@ def simulate(inputs: ControlInputs = ControlInputs()):
     if not (10<=inputs.speed_kmh<=70
             and 0<=inputs.vehicles_per_hour<=1200
             and 0<=inputs.pedestrians_per_hour<=600
+            and 1<=inputs.lanes<=3
             and 20<=inputs.green_s<=70
             and 12<=inputs.walk_s<=30
             and 10<=inputs.clearance_s<=30
