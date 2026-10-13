@@ -19,6 +19,7 @@ from scene_intelligence import image_motion, scene_diagnostics, diagnostic_event
 
 BASE = Path(__file__).resolve().parent
 OUTPUTS = BASE / "outputs"
+LIVE_STREAM_SLOTS = threading.BoundedSemaphore(1)  # prevent multiple shared-server live AI workers
 ROAD_CLASSES = ("person", "car", "motorcycle", "bus", "truck", "bicycle", "traffic light", "stop sign")
 VEHICLES = {"car", "motorcycle", "bus", "truck", "bicycle"}
 SUMMARY_FIELDS = ["video_second", "frame_number", "people", "vehicles", "cars", "buses", "trucks", "motorcycles", "bicycles", "traffic_lights", "stop_signs", "all_objects"]
@@ -56,8 +57,10 @@ class LatestCameraFrames:
     This avoids the multi-second backlog common when AI inference is slower
     than the camera frame rate. Requires locally attached camera access.
     """
-    def __init__(self, capture, stop_event):
+    def __init__(self, capture, stop_event, reconnect_factory=None):
         self.capture = capture
+        self.reconnect_factory = reconnect_factory
+        self.failure_reason = "Video stream stopped returning frames."
         self.stop_event = stop_event
         self.condition = threading.Condition()
         self.frame = None
@@ -70,6 +73,23 @@ class LatestCameraFrames:
         while not self.stop_event.is_set():
             ok, frame = self.capture.read()
             if not ok:
+                if self.reconnect_factory and not self.stop_event.is_set():
+                    self.capture.release()
+                    reconnected = False
+                    for attempt in range(3):
+                        if self.stop_event.wait(2 * (attempt + 1)):
+                            break
+                        try:
+                            new_capture = self.reconnect_factory()
+                            if new_capture.isOpened():
+                                self.capture = new_capture
+                                reconnected = True
+                                break
+                            new_capture.release()
+                        except Exception as exc:
+                            self.failure_reason = str(exc)[:250]
+                    if reconnected:
+                        continue
                 with self.condition:
                     self.failed = True
                     self.condition.notify_all()
@@ -85,11 +105,12 @@ class LatestCameraFrames:
             if self.version > last_version:
                 return True, self.frame.copy(), self.version
             if self.failed:
-                raise RuntimeError("Camera stopped returning frames. Is another app using it?")
+                raise RuntimeError(self.failure_reason)
             return False, None, last_version
 
     def close(self):
         self.thread.join(timeout=1.0)
+        self.capture.release()
 
 
 @dataclass(frozen=True)
@@ -117,6 +138,11 @@ class VideoJob:
         if source_kind == "youtube":
             from live_sources import canonical_youtube_live_url
             source = canonical_youtube_live_url(str(source))
+        self._holds_live_slot = False
+        if source_kind == "youtube":
+            if not LIVE_STREAM_SLOTS.acquire(blocking=False):
+                raise RuntimeError("One YouTube live analysis is already using this shared server. Try again later.")
+            self._holds_live_slot = True
         self.source = source
         self.source_kind = source_kind
         self.is_live = isinstance(source, int) or source_kind == "youtube"
@@ -226,7 +252,13 @@ class VideoJob:
                 raise ValueError("Cannot open source. Check file path or camera permissions / camera index.")
             if self.is_live:
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                camera_reader = LatestCameraFrames(cap, self._stop)
+                reconnect_factory = None
+                if self.source_kind == "youtube":
+                    def reconnect_factory():
+                        from live_sources import resolve_youtube_live
+                        renewed_url, _ = resolve_youtube_live(self.source)
+                        return cv2.VideoCapture(renewed_url)
+                camera_reader = LatestCameraFrames(cap, self._stop, reconnect_factory=reconnect_factory)
             video_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0)
             if not (1 <= video_fps <= 240):
                 video_fps = 30.0
@@ -398,5 +430,8 @@ class VideoJob:
                 writer.release()
             if cap is not None:
                 cap.release()
+            if self._holds_live_slot:
+                self._holds_live_slot = False
+                LIVE_STREAM_SLOTS.release()
             with self._lock:
                 self.finished_at = time.time()
