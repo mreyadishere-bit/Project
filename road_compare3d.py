@@ -32,7 +32,9 @@ button:hover{background:#e9f2ff}
 .panelhead strong{font-size:13px}
 .panelhead span{color:#7a90a6;font-size:10px}
 .viewport{aspect-ratio:16/9;position:relative;overflow:hidden;background:#d2e3eb}
-.viewport video,.viewport canvas{height:100%;width:100%;display:block;object-fit:contain}
+.viewport video,.viewport canvas,.viewport .matched-background{height:100%;width:100%;display:block;object-fit:contain}
+.viewport .matched-background{position:absolute;inset:0;z-index:0;pointer-events:none}
+.viewport canvas{position:absolute;inset:0;z-index:1;cursor:grab}
 .viewport canvas{cursor:grab}
 .panelnote{padding:11px 15px;border-top:1px solid #e8edf3;color:#8290a2;min-height:54px;line-height:1.5;font-size:11px}
 .video-fallback{display:none;position:absolute;inset:0;align-items:center;justify-content:center;padding:25px;background:#f0f5fa;color:#46617a;text-align:center;flex-direction:column;gap:12px}
@@ -67,9 +69,9 @@ button:hover{background:#e9f2ff}
     <div class="panelnote">The original recording is the master timeline. Play, pause or seek here to control the 3D scenario.</div>
   </section>
   <section class="panel">
-    <div class="panelhead"><strong>02 · Modified 3D road model</strong><span id="scenarioName">Scenario</span></div>
-    <div class="viewport" id="simulation"></div>
-    <div class="panelnote">Real 3D vehicles and road meshes. Only visible tracked positions are grounded in the video; geometry and proposed changes are estimates.</div>
+    <div class="panelhead"><strong>02 · Camera-matched modified 3D</strong><span id="scenarioName">Scenario</span></div>
+    <div class="viewport" id="simulation"><img class="matched-background" id="matchedBackground" alt="Background extracted from the actual road video" /></div>
+    <div class="panelnote">Source View: actual road image with 3D tracked vehicles and visual interventions. Orbit / Top: approximate 3D geometry.</div>
   </section>
 </div>
 <div class="playback"><label for="seek">Timeline</label><input id="seek" type="range" min="0" max="1000" value="0">
@@ -127,14 +129,20 @@ try {
  // road surfaces and vehicle footpoints. Reprojection keeps each sampled
  // ground-contact pixel aligned in Source View without inventing depth.
  const viewport=document.getElementById("simulation");
- const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:"low-power"});
- renderer.setClearColor(0xcadce7,1);
+ const matchedBackground=document.getElementById("matchedBackground");
+ matchedBackground.src=data.backgroundImage;
+ const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:"low-power",alpha:true});
+ renderer.setClearColor(0xcadce7,0);
  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.6));
  renderer.outputColorSpace=THREE.SRGBColorSpace;
  renderer.shadowMap.enabled=true;
  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
  viewport.appendChild(renderer.domElement);
- const scene=new THREE.Scene();scene.background=new THREE.Color(0xc8dfe9);
+ const scene=new THREE.Scene();scene.background=null;
+ const environment=new THREE.Group();scene.add(environment);
+ const sourceTexture=new THREE.TextureLoader().load(data.backgroundImage);
+ sourceTexture.colorSpace=THREE.SRGBColorSpace;
+ const photoRoad=new THREE.MeshStandardMaterial({map:sourceTexture,roughness:.98,side:THREE.DoubleSide});
  scene.fog=new THREE.Fog(0xc8dfe9,180,680);
  scene.add(new THREE.HemisphereLight(0xffffff,0x7d9187,2.0));
  const sun=new THREE.DirectionalLight(0xffecd7,2.0);
@@ -193,18 +201,19 @@ try {
  const asphalt=mat(0x383f4b),shoulder=mat(0x78828e),median=mat(0x72976a),green=mat(0x88b58a),white=mat(0xeef0e8),metal=mat(0x9baebc,.24);
  const geometryHealth={roadSections:0,vertexCount:0,groundWidth:0,groundDepth:0};
  const ground=new THREE.Mesh(new THREE.PlaneGeometry(1200,1600),green);
- ground.rotation.x=-Math.PI/2;ground.position.z=160;ground.position.y=-.13;ground.receiveShadow=true;scene.add(ground);
- function addMesh(geo,material,x=0,y=0,z=0,group=scene){
+ ground.rotation.x=-Math.PI/2;ground.position.z=160;ground.position.y=-.13;ground.receiveShadow=true;environment.add(ground);
+ function addMesh(geo,material,x=0,y=0,z=0,group=environment){
    const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;group.add(m);return m;
  }
  function strip(edgeA,edgeB,material,elev=.03){
-    const points=[],indices=[],steps=45;
+    const points=[],uvs=[],indices=[],steps=45;
     for(let i=0;i<=steps;i++){
         const v=.295+i/steps*.78;
         const a=imageToGround(sampleEdge(edgeA,v),v);
         const b=imageToGround(sampleEdge(edgeB,v),v);
         if(!a||!b)continue;
         points.push(a.x,elev,a.z,b.x,elev,b.z);
+         uvs.push(sampleEdge(edgeA,v),1-v,sampleEdge(edgeB,v),1-v);
     }
     const count=points.length/6;
     if(count<2)return;
@@ -225,8 +234,10 @@ try {
     for(let i=0;i<count-1;i++){const k=2*i;indices.push(k,k+1,k+2,k+1,k+3,k+2)}
     const geo=new THREE.BufferGeometry();
     geo.setAttribute("position",new THREE.Float32BufferAttribute(points,3));
-    geo.setIndex(indices);geo.computeVertexNormals();
-    const mesh=new THREE.Mesh(geo,material);mesh.receiveShadow=true;scene.add(mesh);
+    geo.setIndex(indices);
+    geo.setAttribute("uv",new THREE.Float32BufferAttribute(uvs,2));
+    geo.computeVertexNormals();
+    const mesh=new THREE.Mesh(geo,photoRoad);mesh.receiveShadow=true;environment.add(mesh);
  }
  strip("left","innerLeft",asphalt);
  strip("innerRight","right",asphalt);
@@ -237,7 +248,7 @@ try {
  document.getElementById("scenarioName").title=
    "Road mesh verified: "+geometryHealth.vertexCount+" vertices · "+geometryHealth.roadSections+" surfaces";
  function inLaneImage(v,left,right,t){return sampleEdge(left,v)*(1-t)+sampleEdge(right,v)*t}
- const markingGroup=new THREE.Group();scene.add(markingGroup);
+ const markingGroup=new THREE.Group();environment.add(markingGroup);
  function dashLane(left,right,fraction,group,continuous=false){
     let last=null;
     for(let i=0;i<=58;i++){
@@ -332,7 +343,12 @@ try {
     addMesh(new THREE.BoxGeometry(1.8,1.5,.13),mat(0xe7eff8),sg.x+.8,4.2,sg.z,signGroup);
  }
  function chooseCamera(view){
-   controls.enabled=view!=="source";
+   const aligned=view==="source";
+    controls.enabled=!aligned;
+    environment.visible=!aligned;
+    matchedBackground.style.display=aligned?"block":"none";
+    scene.background=aligned?null:new THREE.Color(0xc8dfe9);
+    renderer.setClearColor(0xc8dfe9,aligned?0:1);
    if(view==="source"){
       camera.position.copy(sourceCamera.position);
       camera.quaternion.copy(sourceCamera.quaternion);
@@ -365,6 +381,15 @@ try {
       if(!position){entry.obj.visible=false;continue}
       entry.obj.visible=true;
       entry.obj.position.copy(position);
+      // Make box-height perspective roughly match the original tracked car.
+      if(document.getElementById("camera").value==="source"){
+        const low=position.clone().project(sourceCamera);
+        const high=position.clone().add(new THREE.Vector3(0,2.15,0)).project(sourceCamera);
+        const projectedHeight=Math.abs((high.y-low.y)/2);
+        if(projectedHeight>.0001 && p[4]>0){
+          entry.obj.scale.setScalar(Math.max(.2,Math.min(3.2,p[4]/projectedHeight)));
+        }
+      }else entry.obj.scale.setScalar(1);
       const pre=interpolate(entry.track.points,Math.max(first,trackTime-.23));
       const after=interpolate(entry.track.points,Math.min(entry.track.points[entry.track.points.length-1][0],trackTime+.23));
       if(pre&&after){
@@ -475,16 +500,21 @@ def render_reconstruction(job, snapshot):
     with st.spinner("Preparing the ORIGINAL video for synchronized comparison..."):
         video_uri, video_status = prepare_source_video(job)
     options = _simulation_options(report)
+    from scene_background import background_photo
+    with st.spinner("Matching the source camera and removing many moving vehicles from the reference..."):
+        background_uri, background_origin = background_photo(job, scene["image"])
     data = {
         "tracks": scene["tracks"], "options": options,
         "initialOption": options[0]["id"] if options else "none",
         "duration": float(snapshot.get("duration_seconds") or scene["duration"]),
         "videoStatus": video_status,
         "originalDimensions": [scene["width"],scene["height"]],
+        "backgroundImage": background_uri,
+        "backgroundOrigin": background_origin,
     }
     html = VIEWER.replace("__VIDEO_URL__",escape(video_uri or "",quote=True)).replace(
         "__SCENE__",json.dumps(data,ensure_ascii=False,separators=(",",":")).replace("</","<\\/"))
     st.iframe(html,height="content",alt="Original recorded video versus modified low-poly 3D highway simulation with synchronized playback and source-camera image reprojection")
     if not video_uri:
         st.info("Large or unavailable original recording: select the same video from your device inside the comparison. This allows local synchronized playback without exposing the upload publicly.")
-    st.caption("The left side is real footage, not a simulated baseline. The right side is an editable 3D approximation. Source View matches sampled vehicle footpoint pixels using an assumed flat road plane; it does not reconstruct hidden geometry.")
+    st.caption("Source View uses the actual road camera background ("+background_origin+") with source-aligned 3D vehicles and editable changes. Orbit and Top View use estimated volumetric geometry; exact road depth and unseen surfaces remain unknown.")
