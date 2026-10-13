@@ -233,6 +233,18 @@ function viewport(side){
  return world;
 }
 worlds.push(viewport(0),viewport(1));
+// Keep comparison cameras synchronized when orbiting either panel.
+let syncingViews=false;
+worlds.forEach((w,i)=>w.orbit.addEventListener("change",()=>{
+ if(syncingViews)return;
+ syncingViews=true;
+ const counterpart=worlds[1-i];
+ counterpart.camera.position.copy(w.camera.position);
+ counterpart.camera.quaternion.copy(w.camera.quaternion);
+ counterpart.orbit.target.copy(w.orbit.target);
+ counterpart.orbit.update();
+ syncingViews=false;
+}));
 function interpolate(p,t){
  if(!p.length||t<p[0][0]||t>p[p.length-1][0])return null;
  let lo=0,hi=p.length-1;while(lo<hi){const mid=(lo+hi)>>1;if(p[mid][0]<t)lo=mid+1;else hi=mid}
