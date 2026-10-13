@@ -127,6 +127,7 @@ class VideoSettings:
     save_video: bool = False
     meters_per_pixel: float | None = None   # legacy rough pixel scale
     road_calibration: RoadCalibration | None = None
+    camera_fov_deg: float = 70.0  # needs real intrinsics for accurate pose
     count_line_fraction: float = .50
     tracker: str = "botsort.yaml"
 
@@ -140,6 +141,8 @@ class VideoJob:
             raise ValueError("Invalid confidence")
         if settings.analysis_fps not in {1, 2, 5, 10, 15, 30}:
             raise ValueError("Invalid analysis rate")
+        if not 30 <= settings.camera_fov_deg <= 120:
+            raise ValueError("Camera FOV outside supported range")
         if settings.tracker not in {"botsort.yaml", "bytetrack.yaml"}:
             raise ValueError("Invalid tracker")
         if not .05 <= settings.count_line_fraction <= .95:
@@ -235,6 +238,7 @@ class VideoJob:
                 "evidence": self.evidence.snapshot(), "settings_fps": self.settings.analysis_fps,
                 "crossings": self.crossings.snapshot(),
                 "frame_width": self.frame_width, "frame_height": self.frame_height,
+                "camera_fov_deg": self.settings.camera_fov_deg,
                 "calibration": ({"points": self.settings.road_calibration.points,
                                 "width_m": self.settings.road_calibration.width_m,
                                 "length_m": self.settings.road_calibration.length_m}
