@@ -19,7 +19,7 @@ from scene_intelligence import image_motion, scene_diagnostics, diagnostic_event
 
 BASE = Path(__file__).resolve().parent
 OUTPUTS = BASE / "outputs"
-LIVE_STREAM_SLOTS = threading.BoundedSemaphore(1)  # prevent multiple shared-server live AI workers
+LIVE_STREAM_SLOTS = threading.BoundedSemaphore(1)  # public hosted live CPU inference is bounded
 ROAD_CLASSES = ("person", "car", "motorcycle", "bus", "truck", "bicycle", "traffic light", "stop sign")
 VEHICLES = {"car", "motorcycle", "bus", "truck", "bicycle"}
 SUMMARY_FIELDS = ["video_second", "frame_number", "people", "vehicles", "cars", "buses", "trucks", "motorcycles", "bicycles", "traffic_lights", "stop_signs", "all_objects"]
@@ -125,7 +125,7 @@ class VideoSettings:
 
 
 class VideoJob:
-    """One file, PC camera or public live video, isolated per worker."""
+    """One file, PC camera, or approved public live feed, isolated per worker."""
     def __init__(self, source: str | int, settings: VideoSettings, label: str = "Video", source_kind: str = "file"):
         if settings.model_name not in {"yolo26n.pt", "yolo26s.pt", "yolo26m.pt"}:
             raise ValueError("Invalid model")
@@ -133,19 +133,23 @@ class VideoJob:
             raise ValueError("Invalid confidence")
         if settings.analysis_fps not in {1, 2, 5, 10, 15, 30}:
             raise ValueError("Invalid analysis rate")
-        if source_kind not in {"file", "youtube"}:
+        if source_kind not in {"file", "youtube", "public_live"}:
             raise ValueError("Unsupported source kind")
         if source_kind == "youtube":
             from live_sources import canonical_youtube_live_url
             source = canonical_youtube_live_url(str(source))
+        elif source_kind == "public_live":
+            from public_cameras import get_camera
+            # Fail fast if the requested camera ID is not in our reviewed catalog.
+            get_camera(str(source))
         self._holds_live_slot = False
-        if source_kind == "youtube":
+        if source_kind in {"youtube", "public_live"}:
             if not LIVE_STREAM_SLOTS.acquire(blocking=False):
-                raise RuntimeError("One YouTube live analysis is already using this shared server. Try again later.")
+                raise RuntimeError("One public live analysis is already using this shared server. Stop that session or try again later.")
             self._holds_live_slot = True
         self.source = source
         self.source_kind = source_kind
-        self.is_live = isinstance(source, int) or source_kind == "youtube"
+        self.is_live = isinstance(source, int) or source_kind in {"youtube", "public_live"}
         self.settings = settings
         self.label = label[:120]
         self.is_camera = isinstance(source, int)
@@ -236,11 +240,17 @@ class VideoJob:
             # Resolve public live access BEFORE loading the heavyweight model:
             # inaccessible YouTube media should fail quickly and clearly.
             capture_source = self.source
-            if self.source_kind == "youtube":
-                from live_sources import resolve_youtube_live
+            if self.source_kind in {"youtube", "public_live"}:
                 with self._lock:
                     self.status = "connecting stream"
-                capture_source, broadcast_title = resolve_youtube_live(self.source)
+                if self.source_kind == "youtube":
+                    from live_sources import resolve_youtube_live
+                    capture_source, broadcast_title = resolve_youtube_live(self.source)
+                else:
+                    from public_cameras import get_camera
+                    camera_info = get_camera(self.source)
+                    capture_source = camera_info["stream_url"]
+                    broadcast_title = camera_info["label"]
                 with self._lock:
                     self.label = broadcast_title
             # Load model on the worker thread to avoid freezing UI.
@@ -251,7 +261,7 @@ class VideoJob:
                 self.device = "GPU (CUDA)" if device == "0" else "CPU"
                 self.status = "loading model"
             model = YOLO(self.settings.model_name)
-            if self.source_kind == "youtube":
+            if self.source_kind in {"youtube", "public_live"}:
                 from live_decoder import FFmpegLiveCapture
                 cap = FFmpegLiveCapture(capture_source, fps=min(5, self.settings.analysis_fps))
                 if not cap.isOpened():
@@ -266,11 +276,15 @@ class VideoJob:
             if self.is_live:
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                 reconnect_factory = None
-                if self.source_kind == "youtube":
+                if self.source_kind in {"youtube", "public_live"}:
                     def reconnect_factory():
-                        from live_sources import resolve_youtube_live
                         from live_decoder import FFmpegLiveCapture
-                        renewed_url, _ = resolve_youtube_live(self.source)
+                        if self.source_kind == "youtube":
+                            from live_sources import resolve_youtube_live
+                            renewed_url, _ = resolve_youtube_live(self.source)
+                        else:
+                            from public_cameras import get_camera
+                            renewed_url = get_camera(self.source)["stream_url"]
                         return FFmpegLiveCapture(renewed_url, fps=min(5, self.settings.analysis_fps))
                 camera_reader = LatestCameraFrames(cap, self._stop, reconnect_factory=reconnect_factory)
             video_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0)
@@ -293,7 +307,7 @@ class VideoJob:
             last_camera_version = 0
             live_start = time.monotonic()
             # A blocked/live source should not spin indefinitely at zero frames.
-            initial_frame_deadline = live_start + 35.0 if self.source_kind == "youtube" else None
+            initial_frame_deadline = live_start + 30.0 if self.source_kind in {"youtube", "public_live"} else None
             previous_points: dict[int, tuple[float, float]] = {}
             previous_motion: dict[int, tuple[float, float, float]] = {}
             last_emitted: dict[str, float] = {}
@@ -319,10 +333,10 @@ class VideoJob:
                         if not ok:
                             if initial_frame_deadline and time.monotonic() >= initial_frame_deadline:
                                 raise RuntimeError(
-                                    "FFmpeg could not decode any frames from this YouTube livestream "
-                                    "within 35 seconds. YouTube playback in your browser does not "
-                                    "guarantee the server can access the video. "
-                                    "Try an authorized HLS camera feed or a recorded upload."
+                                    "No live video frames reached Smart Road within 30 seconds. "
+                                    "The public camera may be offline, geo-restricted, or temporarily "
+                                    "unavailable from this server. Try another free public camera "
+                                    "or upload permitted road footage."
                                 )
                             continue  # A slow/no frame interval, not necessarily a failure.
                         initial_frame_deadline = None
