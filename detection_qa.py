@@ -65,7 +65,7 @@ def _iou(a,b):
 def _score(tp,fp,fn):
     precision=tp/(tp+fp) if tp+fp else None
     recall=tp/(tp+fn) if tp+fn else None
-    f1=2*precision*recall/(precision+recall) if precision is not None and recall is not None and precision+recall else None
+    f1=(2*precision*recall/(precision+recall) if precision+recall else 0.0) if precision is not None and recall is not None else None
     return {
         "tp":tp, "fp":fp, "fn":fn,
         "precision":round(precision,4) if precision is not None else None,
@@ -91,7 +91,6 @@ def evaluate_detections(ground_truth, objects_file, *, iou_threshold=.50):
                 continue
             if frame in labeled:
                 predicted[frame].append(r)
-    preds={frame:_parse(rows,truth=False).get(frame,[]) for frame,rows in []}
     # Parse a single subset: avoids allocating full video predictions.
     parsed_pred=_parse([r for group in predicted.values() for r in group],truth=False)
     counts=defaultdict(lambda:[0,0,0])
