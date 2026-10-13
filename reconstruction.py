@@ -56,7 +56,22 @@ def build_scene(job, snapshot, max_points=30000, max_tracks=500):
     im.thumbnail((960,600))
     encoded=BytesIO()
     im.save(encoded,"JPEG",quality=65,optimize=True)
+    metric=None
+    cal=snapshot.get("calibration")
+    if cal:
+        try:
+            import cv2
+            from traffic_geometry import RoadCalibration
+            from metric_scene import surveyed_road_scene
+            road=RoadCalibration(tuple(tuple(p) for p in cal["points"]),float(cal["width_m"]),float(cal["length_m"]))
+            source_bgr=cv2.imread(str(reference))
+            if source_bgr is not None:
+                metric=surveyed_road_scene(source_bgr,road,
+                             float(snapshot.get("camera_fov_deg",70)))
+        except (ValueError,RuntimeError,cv2.error,TypeError,KeyError):
+            metric=None
     return {
+        "metric_scene":metric,
         "source":"Observed YOLO track boxes + fixed real video frame",
         "image":"data:image/jpeg;base64,"+base64.b64encode(encoded.getvalue()).decode("ascii"),
         "width":w,"height":h,"duration":float(snapshot.get("video_second") or 1),
