@@ -80,12 +80,12 @@ def show_results(job,snap):
             st.caption("Evidence status: "+r["confidence"]+" · Priority: "+r["priority"])
             st.caption("Check before construction: "+r["verify"])
 
-    st.markdown("### Explore the road in 3D")
-    st.caption("Build a low-poly 3D road environment with curved lanes, barriers, cars, trees and camera orbit/top views. Vehicle tracks use recorded timestamps; geometry is approximate.")
-    if st.button("Create my road simulation",type="primary",use_container_width=True,key="clean_sim_"+job.id):
+    st.markdown("### Original video vs proposed 3D changes")
+    st.caption("Left: your REAL original recording. Right: one modified 3D model. Both use the same video timeline, and vehicle ground-contact positions are projected using a source-matched perspective camera. The road geometry remains approximate.")
+    if st.button("Compare original video with modified 3D",type="primary",use_container_width=True,key="clean_sim_"+job.id):
         st.session_state["clean_sim_active_"+job.id]=True
     if st.session_state.get("clean_sim_active_"+job.id):
-        from road_world3d import render_reconstruction
+        from road_compare3d import render_reconstruction
         render_reconstruction(job,snap)
 
     with st.expander("Download data & inspect measurement limits"):
