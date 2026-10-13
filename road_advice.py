@@ -16,7 +16,7 @@ VEHICLE_CLASSES = {"car", "truck", "bus", "motorcycle", "bicycle"}
 
 def context_from_source(source: str, evidence: dict) -> dict:
     """Conservative context prior, never a computer-vision classification."""
-    words = source.lower().replace("_", " ").replace("-", " ")
+    words = Path(source).stem.lower().replace("_", " ").replace("-", " ")
     highway = any(w in words.split() for w in ("highway", "freeway", "motorway", "autobahn", "expressway"))
     label = "Possible highway / divided road" if highway else "Road type not established"
     return {
