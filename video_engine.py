@@ -6,6 +6,8 @@ while Streamlit reads bounded snapshots. Not an accident or speed estimator.
 from __future__ import annotations
 
 import csv
+import subprocess
+import shutil
 from collections import Counter, deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -16,6 +18,7 @@ import uuid
 
 import cv2
 from scene_intelligence import image_motion, scene_diagnostics, diagnostic_events, draw_scene_overlay
+from insight_engine import EvidenceAccumulator
 
 BASE = Path(__file__).resolve().parent
 OUTPUTS = BASE / "outputs"
@@ -159,6 +162,10 @@ class VideoJob:
         self.summary_file = self.folder / "frames.csv"
         self.objects_file = self.folder / "objects.csv"
         self.video_file = self.folder / "annotated.mp4"
+        self.raw_video_file = self.folder / "annotated_raw.mp4"
+        self.video_export_error = None
+        self.video_ready = False
+        self.evidence = EvidenceAccumulator()
         self.events_file = self.folder / "events.csv"
         self._stop = threading.Event()
         self._pause = threading.Event()
@@ -212,6 +219,8 @@ class VideoJob:
         with self._lock:
             return {
                 "status": self.status, "error": self.error, "label": self.label,
+                "video_ready": self.video_ready, "video_export_error": self.video_export_error,
+                "evidence": self.evidence.snapshot(), "settings_fps": self.settings.analysis_fps,
                 "preview_jpeg": self.preview_jpeg, "best_preview_jpeg": self.best_preview_jpeg,
                 "best_preview_at": self.best_preview_at, "best_detection_count": self.best_detection_count,
                 "detected_class_totals": dict(self.detected_class_totals),
@@ -414,7 +423,7 @@ class VideoJob:
                         if writer is None:
                             h, w = annotated.shape[:2]
                             output_rate = video_fps / frame_step
-                            writer = cv2.VideoWriter(str(self.video_file), cv2.VideoWriter_fourcc(*"mp4v"), output_rate, (w, h))
+                            writer = cv2.VideoWriter(str(self.raw_video_file), cv2.VideoWriter_fourcc(*"mp4v"), output_rate, (w, h))
                             if not writer.isOpened():
                                 raise RuntimeError("Cannot create annotated MP4. Retry with Export video unchecked.")
                         writer.write(annotated)
@@ -453,9 +462,17 @@ class VideoJob:
                         self.unique_track_ids.update(active_ids)
                         self.recent_frames.append(entry)
                         self.recent_objects.extend(detections[-30:])
+                        self.evidence.observe(
+                            detections, counts, diag,
+                            second=seconds, frame_width=frame.shape[1],
+                            frame_height=frame.shape[0], events=new_events
+                        )
                         self.processing_fps = (len(times) - 1) / elapsed if elapsed > 0 else 0
             with self._lock:
-                self.status = "stopped" if self._stop.is_set() else ("ended" if self.is_live else "completed")
+                self.status = (
+                    "finalizing video" if writer is not None else
+                    ("stopped" if self._stop.is_set() else ("ended" if self.is_live else "completed"))
+                )
         except Exception as exc:
             with self._lock:
                 self.error = f"{type(exc).__name__}: {exc}"
@@ -466,6 +483,33 @@ class VideoJob:
                 camera_reader.close()
             if writer is not None:
                 writer.release()
+                # Convert OpenCV MP4V (not reliably supported in browsers) to
+                # web-playable H264 on the server, without buffering video in RAM.
+                if self.raw_video_file.is_file() and self.raw_video_file.stat().st_size > 0:
+                    try:
+                        ffmpeg = shutil.which("ffmpeg")
+                        if ffmpeg is None:
+                            raise RuntimeError("FFmpeg is not installed; cannot encode browser-playable H264.")
+                        transcoded = subprocess.run([
+                            ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                            "-i", str(self.raw_video_file), "-an",
+                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "27",
+                            "-threads", "2", "-pix_fmt", "yuv420p",
+                            "-movflags", "+faststart", str(self.video_file),
+                        ], capture_output=True, timeout=240)
+                        if transcoded.returncode != 0 or not self.video_file.is_file() or self.video_file.stat().st_size == 0:
+                            raise RuntimeError("Could not encode H264 playback video on this server.")
+                        self.video_ready = True
+                    except (OSError, RuntimeError, subprocess.TimeoutExpired) as export_exc:
+                        self.video_export_error = str(export_exc)[:220]
+                        self.video_file.unlink(missing_ok=True)
+                    finally:
+                        self.raw_video_file.unlink(missing_ok=True)
+                with self._lock:
+                    if self.status == "finalizing video":
+                        self.status = "stopped" if self._stop.is_set() else (
+                            "ended" if self.is_live else "completed"
+                        )
             if cap is not None:
                 cap.release()
             if self._holds_live_slot:
