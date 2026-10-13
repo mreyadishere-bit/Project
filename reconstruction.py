@@ -70,7 +70,14 @@ def build_scene(job, snapshot, max_points=30000, max_tracks=500):
                              float(snapshot.get("camera_fov_deg",70)))
         except (ValueError,RuntimeError,cv2.error,TypeError,KeyError):
             metric=None
+    video_inline=None
+    video=Path(getattr(job,"video_file",""))
+    # Keep embedding capped so long recordings do not overload Streamlit
+    # or browser memory. Do not create public URLs to user uploads.
+    if getattr(job,"video_ready",False) and video.is_file() and 0<video.stat().st_size<=8*1024*1024:
+        video_inline="data:video/mp4;base64,"+base64.b64encode(video.read_bytes()).decode("ascii")
     return {
+        "embedded_video":video_inline,
         "metric_scene":metric,
         "source":"Observed YOLO track boxes + fixed real video frame",
         "image":"data:image/jpeg;base64,"+base64.b64encode(encoded.getvalue()).decode("ascii"),
