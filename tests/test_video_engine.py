@@ -142,6 +142,43 @@ class VideoTests(unittest.TestCase):
             finally:
                 video_engine.OUTPUTS=old
 
+    def test_crossing_counter_is_not_last_frame_count(self):
+        import video_engine
+        class MovingYOLO:
+            names={2:"car"}
+            def __init__(self,model):self.n=0
+            def track(self,frame,**kwargs):
+                self.n+=1
+                bottom=min(90,10+self.n*4)
+                class Boxes:
+                    def __len__(self):return 1
+                boxes=Boxes()
+                boxes.xyxy=FakeTensor([[30,max(0,bottom-18),70,bottom]])
+                boxes.conf=FakeTensor([.95])
+                boxes.cls=FakeTensor([2])
+                boxes.id=FakeTensor([10])
+                result=types.SimpleNamespace(boxes=boxes,names={2:"car"})
+                return [result]
+        with tempfile.TemporaryDirectory() as td:
+            old=video_engine.OUTPUTS
+            video_engine.OUTPUTS=Path(td)/"out"
+            try:
+                clip=Path(td)/"moving.avi"
+                create_video(clip,frames=28,fps=5)
+                fake=types.ModuleType("ultralytics")
+                fake.YOLO=MovingYOLO
+                with patch.dict(sys.modules,{"ultralytics":fake,"torch":fake_torch}):
+                    job=VideoJob(str(clip),VideoSettings(analysis_fps=5,count_line_fraction=.55))
+                    job._thread.join(timeout=20)
+                snap=job.snapshot()
+                self.assertEqual(snap["status"],"completed",snap["error"])
+                self.assertEqual(snap["crossings"]["total_passed"],1)
+                self.assertEqual(snap["crossings"]["passed_by_class"]["car"],1)
+                self.assertEqual(snap["unique_tracks"],1)
+                self.assertEqual(snap["detected_now"]["vehicles"],1)
+            finally:
+                video_engine.OUTPUTS=old
+
     def test_camera_open_failure_is_reported(self):
         from video_engine import OUTPUTS
         import video_engine
