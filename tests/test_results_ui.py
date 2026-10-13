@@ -49,7 +49,8 @@ results_page(job,snap,hosted=True)
         # 3D viewer is intentionally lazy-loaded from one button. The old
         # generic toy-simulation sliders must not appear in the final report.
         self.assertEqual(len(result.slider), 0)
-        self.assertEqual(len(result.checkbox), 0)
+        self.assertGreaterEqual(len(result.checkbox), 1)
+        self.assertTrue(any("manually counted" in box.label for box in result.checkbox))
         self.assertGreaterEqual(len(result.button), 1)
 
 
