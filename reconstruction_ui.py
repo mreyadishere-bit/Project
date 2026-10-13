@@ -123,7 +123,7 @@ function nearest(points,sec){
  if(a===b||b[0]===a[0])return b;
  if(b[0]-a[0]>3.5)return null;
  const v=(sec-a[0])/(b[0]-a[0]);
- return [sec,...[1,2,3,4].map(i=>a[i]+(b[i]-a[i])*v)];
+ return [sec,...Array.from({length:Math.min(a.length,b.length)-1},(_,k)=>a[k+1]+(b[k+1]-a[k+1])*v)];
 }
 function render(now){
  if(playing)t+=(now-last)/1000*rate;
