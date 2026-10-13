@@ -11,7 +11,6 @@ import pandas as pd
 import streamlit as st
 
 from insight_engine import explain_video
-from simulation_ui import simulation_panel
 from reconstruction_ui import render_reconstruction
 from traffic_metrics import summarize_tracks, crossing_headways
 
@@ -259,11 +258,7 @@ def results_page(job, snap, hosted: bool):
         render_reconstruction(job,snap)
     else:
         st.info("Click the button above to open the interactive road model here. This keeps the initial results page fast.")
-    _section("07 · Optional teaching simulator","Alternative simplified traffic-flow scenario (not fitted to this video)")
-    with st.expander("Open separate educational 2.5D toy simulation"):
-        simulation_panel()
-
-    _section("08 · Download your full analysis","Transparent evidence and documented assumptions")
+    _section("07 · Download your full analysis","Transparent evidence and documented assumptions")
     report={
         "project":"Smart Road AI research v4",
         "source":snap["label"],
