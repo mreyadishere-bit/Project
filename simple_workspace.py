@@ -138,6 +138,12 @@ def video_tab():
     def _live():
         current=st.session_state.get("simple_road_job")
         if current:
+            snapshot=current.snapshot()
+            if snapshot["status"] in {"completed","stopped","ended","error"}:
+                terminal_key="simple_road_terminal"
+                if st.session_state.get(terminal_key)!=current.id:
+                    st.session_state[terminal_key]=current.id
+                    st.rerun(scope="app") # remove the periodic fragment schedule
             _status(current)
     _live()
     if not job:
