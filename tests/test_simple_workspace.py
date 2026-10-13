@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
-from road_world3d import VIEWER
+from road_compare3d import VIEWER
 
 
 class SimpleWorkspaceTests(unittest.TestCase):
@@ -39,13 +39,19 @@ class SimpleWorkspaceTests(unittest.TestCase):
             check=subprocess.run(["node","--check",str(file)],capture_output=True,text=True,timeout=15)
         self.assertEqual(check.returncode,0,check.stderr)
 
-    def test_genuine_3d_environment_not_flat_photo_overlay(self):
-        self.assertIn("OrbitControls",VIEWER)
-        self.assertIn("PerspectiveCamera",VIEWER)
-        self.assertIn("CylinderGeometry",VIEWER)
-        self.assertIn("roadRibbon",VIEWER)
-        self.assertIn("lowPolyCar",VIEWER)
-        self.assertIn("Top view",VIEWER)
-        self.assertNotIn("backgroundImage",VIEWER)
+    def test_original_footage_and_one_real_3d_model(self):
+        self.assertIn('<video id="sourceVideo"',VIEWER)
+        self.assertIn('video.currentTime',VIEWER)
+        self.assertIn('sourceCamera',VIEWER)
+        self.assertIn('imageToGround',VIEWER)
+        self.assertIn('OrbitControls',VIEWER)
+        self.assertIn('PerspectiveCamera',VIEWER)
+        self.assertIn('CylinderGeometry',VIEWER)
+        self.assertIn('vehicleModel',VIEWER)
+        self.assertIn('Top view',VIEWER)
+        self.assertIn('Original recorded video',VIEWER)
+        self.assertNotIn('Observed trajectories',VIEWER)
+        self.assertNotIn('id="before"',VIEWER)
+        self.assertNotIn('requestAnimationFrame(frame)',VIEWER)
 
 if __name__=="__main__":unittest.main()
