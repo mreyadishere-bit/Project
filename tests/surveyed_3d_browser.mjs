@@ -19,7 +19,7 @@ try{
              "The road viewer must use the supplied surveyed real dimensions");
  assert.match(stats,/Camera fit RMSE/,
              "Camera fit quality must be shown, not hidden");
- assert.match(stats,/visible tracked meshes/,
+ assert.match(stats,/observed tracked meshes/,
              "Actual tracked-world car mesh replay must be live");
  const projectionText=await page.locator("#projectionStatus").textContent();
  const reprojection=Number(projectionText.match(/([\d.]+) px RMSE/)?.[1]);
