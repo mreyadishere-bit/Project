@@ -135,6 +135,14 @@ def road_report(evidence: dict, source: str, objects_file=None) -> dict:
                 "Measure roadway light levels and inspect retroreflective signs, after checking camera exposure.",
                 "Survey light levels at night with calibrated instruments.",
                 proposed_change="lighting",benefit="Could improve visibility if deficient lighting is confirmed."))
+        if pedestrians >= 20 and context["kind"] == "highway_hint":
+            recs.append(_recommendation(
+                "access", "Verify unexpected pedestrian exposure along the divided road",
+                f"Pedestrians were detected in {pedestrians:.1f}% of frames; the source title suggests a highway, but this classification is not verified.",
+                "Roadside presence on an access-controlled route may indicate a need to inspect access, but detection errors and off-road paths are possible.",
+                "Verify the actual road type and pedestrian locations; investigate barriers, access and nearby legitimate walking routes if needed.",
+                "Ground-truth pedestrian detections, confirm ownership, legal access and physical boundaries.",
+                proposed_change="inspection",benefit="No crossing or barrier intervention justified solely from detections."))
         if pedestrians >= 20 and proximity >= 10 and context["kind"] != "highway_hint":
             recs.append(_recommendation(
                 "pedestrians", "Review how pedestrians and vehicles interact",
