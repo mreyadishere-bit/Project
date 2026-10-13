@@ -4,6 +4,68 @@
 
 [Live Streamlit research demo](https://project-imqe2wriheusspmbnmgyxg.streamlit.app/) · Python 3.11 · Streamlit · Ultralytics YOLO · OpenCV
 
+## Smart Road AI V5 — Grounded traffic analytics and camera-oriented 3D
+
+This release addresses an important mistake in early versions: a count of two
+visible cars in the final frame is **not** an accurate "total passed vehicles".
+
+### What the upgraded analyzer measures
+
+- **Current visible vehicles**: objects in one processed frame.
+- **Track IDs recorded**: detector/tracker IDs, vulnerable to ID switches.
+- **Vehicles passing a user-positioned horizontal line**: the number of distinct
+  stable IDs observed crossing that line, with per-class, timestamp and
+  image-direction evidence in `crossings.csv`.
+- **Full video per-track measurements**: appearance duration, motion in
+  pixels/s, and optional metric road distance, speed, heading and acceleration
+  from sampled tracked footpoints if road-plane calibration is provided.
+- **Road-plane calibration**: choose four **surveyed** corners of a real flat
+  road rectangle and provide its real width/length and approximate camera
+  horizontal FOV. Homography estimates metric positions; camera pose is
+  estimated and reprojection-tested. These are still error-prone, not
+  speed-enforcement measurements.
+- **Precision profile**: Balanced uses a larger YOLO detector; Deep uses
+  a heavier model with higher resolution/sampling, at additional CPU cost.
+  BoT-SORT is used as the tracking preset.
+
+### Interactive in-page video-driven 3D replay
+
+After analysis finishes, click **Generate recommendations & 3D simulation**:
+
+- All stable original track timestamps and observed 2D positions are exported
+  for the browser 3D viewer, sampled evenly over the video timeline for bounded
+  memory.
+- Without road calibration, generic 3D agents overlay a **static real video
+  reference frame**, keeping image locations aligned.
+- With valid surveyed road calibration, a textured top-down road patch is
+  projected onto a real-size ground plane with estimated original camera pose.
+  Object footpoints use calibrated world coordinates and can be inspected
+  from different camera angles. The camera pose also depends on an approximate
+  horizontal FOV; an accurate match needs actual camera intrinsics.
+- For **small annotated H264 videos only (up to 8 MB)**, playback and 3D
+  observed/modified scenes share the same HTML5 video clock and scrubber.
+  Larger videos use original timestamps without embedding the video again to
+  avoid exploding browser memory.
+- Editing proposed speeds, a crossing or an illustrative width displacement
+  generates counterfactual **visuals**, not validated crash reduction forecasts.
+  The system offers rule-based default interventions based on actual flags.
+
+**These modes do not rebuild an exact 3D scene from a monocular fixed CCTV
+camera.** Occluded objects, facades, body shape, mass, road elevations and
+true hidden geometry remain unknown. The textured road patch is a photo
+warped to an assumed flat surveyed surface, not a full photogrammetric mesh.
+For a precision digital twin, obtain multi-view calibrated imagery / LiDAR
+and a surveyed road geometry model, and validate with ground-truth traffic
+observations. Free hosted Streamlit CPU cannot replace a dedicated GPU
+inference/simulation backend for long high-res video.
+
+**Verification:** Synthetic-video integrations, line-count debouncing, 3D
+scene payload, surveyed perspective re-projection, Node module parse and
+full Streamlit UI regression tests run in GitHub Actions. This is not a
+measured accuracy benchmark on real labeled traffic footage. To claim
+high accuracy, annotate a representative evaluation sample and report
+precision/recall, counting error, ID switches and metric speed error.
+
 ## Smart Road AI v4 — video evidence & scenario lab
 
 The hosted [Smart Road AI app](https://project-imqe2wriheusspmbnmgyxg.streamlit.app/) now defaults to **Upload video** (recorded footage) so repeatable analysis can be compared. Set `Create final playable video (H.264)` on before starting.
