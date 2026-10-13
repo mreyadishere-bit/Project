@@ -1,0 +1,15 @@
+# Fixed-camera traffic tracking profile — tuned to retain small/low-confidence cars.
+# Based on Ultralytics BoT-SORT YAML. Verify counts against labeled ground truth.
+tracker_type: botsort
+track_high_thresh: 0.14
+track_low_thresh: 0.07
+new_track_thresh: 0.16
+track_buffer: 65
+match_thresh: 0.84
+fuse_score: True
+# Fixed roadside CCTV does not need expensive optical flow camera-motion compensation.
+gmc_method: none
+proximity_thresh: 0.5
+appearance_thresh: 0.8
+with_reid: False
+model: auto
