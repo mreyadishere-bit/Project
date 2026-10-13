@@ -20,6 +20,7 @@ from live_sources import canonical_youtube_live_url
 
 STATUS = {
     "starting": ("Starting", "blue"),
+    "connecting stream": ("Checking video source", "blue"),
     "loading model": ("Loading AI model", "blue"),
     "running": ("Analyzing", "green"),
     "completed": ("Completed", "green"),
@@ -237,7 +238,12 @@ def video_stage(snap, job):
     left, right = st.columns([1.8, 1], gap="medium")
     with left:
         with st.container(border=True):
-            if snap and snap.get("preview_jpeg"):
+            if (snap and snap.get("source_kind") == "youtube"
+                    and snap.get("status") == "error" and not snap.get("preview_jpeg")):
+                st.warning("YouTube player preview only — 0 frames reached the AI. This is NOT an analyzed video.")
+                st.video(job.source)
+                st.caption("Playback can be available in your browser even when YouTube blocks server-side frame extraction.")
+            elif snap and snap.get("preview_jpeg"):
                 show_best = bool(snap["status"] in {"completed", "stopped", "ended"} and
                                  not snap.get("detected_now", {}).get("all_objects") and snap.get("best_preview_jpeg"))
                 st.image(snap["best_preview_jpeg"] if show_best else snap["preview_jpeg"], use_container_width=True)
@@ -279,7 +285,7 @@ def video_stage(snap, job):
                         st.caption("This does not prove the broadcast is offline: YouTube may allow normal playback but refuse server-side frame access.")
                         st.link_button("Open original YouTube video ↗", job.source,
                                        use_container_width=True)
-                if snap["status"] in {"starting", "loading model", "running"}:
+                if snap["status"] in {"starting", "connecting stream", "loading model", "running"}:
                     if not snap["is_live"]:
                         if st.button("Resume" if snap["paused"] else "Pause", use_container_width=True, key="sr_pause"):
                             job.resume() if snap["paused"] else job.pause()
@@ -287,13 +293,15 @@ def video_stage(snap, job):
                     if st.button("Stop analysis", use_container_width=True, key="sr_stop"):
                         job.stop()
                         st.rerun(scope="fragment")
-                if snap["status"] == "loading model":
-                    st.info("Loading the model or connecting to the public live feed. Live access can fail if YouTube blocks this server.")
+                if snap["status"] == "connecting stream":
+                    st.info("Checking whether YouTube offers a usable video stream to this server...")
+                elif snap["status"] == "loading model":
+                    st.info("Loading AI model. The video source is accessible at this stage.")
                 if snap["status"] in {"completed", "stopped", "ended", "error"}:
                     if st.button("＋ New analysis", use_container_width=True, key="sr_new_job"):
                         st.session_state["video_job"] = None
                         st.rerun()
-    if snap and snap.get("source_kind") == "youtube":
+    if snap and snap.get("source_kind") == "youtube" and snap.get("status") != "error":
         with st.expander("Original YouTube live player (independent, not synchronized)"):
             st.video(job.source)
             st.caption("The player and analysis have independent buffers and delays. This is not a frame-accurate synchronized comparison.")
@@ -388,7 +396,7 @@ def exports_view(job, snap, hosted):
     if job is None:
         st.info("Analyze a video first. Frame-level observations and diagnostic events are written incrementally to CSV.")
         return
-    if snap["status"] in {"running", "starting", "loading model"}:
+    if snap["status"] in {"running", "starting", "connecting stream", "loading model"}:
         st.info("This session is live. Counts and events update in Workspace/Intelligence. The complete files become downloadable when the run stops.")
         return
     if snap["status"] == "error":
@@ -466,7 +474,7 @@ def video_tab():
     hosted = os.environ.get("SMART_ROAD_HOSTED", "0") == "1"
     job = st.session_state.get("video_job")
     snap = job.snapshot() if job else None
-    active = bool(snap and snap["status"] in {"starting", "loading model", "running"})
+    active = bool(snap and snap["status"] in {"starting", "connecting stream", "loading model", "running"})
     brand(hosted, snap)
     if hosted:
         st.caption("CLOUD RESEARCH PREVIEW · Shared server, no accounts or privacy guarantees. Upload only non-sensitive, permitted video. Long jobs can be interrupted by hosting limits.")
