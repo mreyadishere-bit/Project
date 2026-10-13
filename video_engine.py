@@ -21,6 +21,7 @@ import cv2
 from scene_intelligence import image_motion, scene_diagnostics, diagnostic_events, draw_scene_overlay
 from insight_engine import EvidenceAccumulator
 from traffic_geometry import RoadCalibration, CrossingCounter, ground_kinematics
+from road_tracking import RoadTracker, model_detections
 
 BASE = Path(__file__).resolve().parent
 OUTPUTS = BASE / "outputs"
@@ -373,6 +374,7 @@ class VideoJob:
             # A blocked/live source should not spin indefinitely at zero frames.
             initial_frame_deadline = live_start + 30.0 if self.source_kind in {"youtube", "public_live"} else None
             previous_points: dict[int, tuple[float, float]] = {}
+            road_tracker = RoadTracker(max_age=12)
             previous_motion: dict[int, tuple[float, float, float]] = {}
             previous_world: dict[int, tuple[float,float,float]] = {}
             last_emitted: dict[str, float] = {}
@@ -435,22 +437,20 @@ class VideoJob:
                         roi_frame=frame[y_offset:max(y_offset+2,int(bottom*H)),
                                         x_offset:max(x_offset+2,int(right*W))]
                     started_inference = time.monotonic()
-                    tracker_config = str(BASE / "traffic_botsort.yaml") if self.settings.tracker == "traffic_botsort.yaml" else self.settings.tracker
-                    tracked = model.track(roi_frame, persist=True, tracker=tracker_config, classes=class_ids,
-                                          imgsz=self.settings.image_size, conf=self.settings.confidence,
-                                          device=device, verbose=False)[0]
+                    observations, tracked, raw_detector = model_detections(
+                        model, roi_frame,image_size=self.settings.image_size,
+                        confidence=self.settings.confidence,class_ids=class_ids,
+                        device=device,tracker=road_tracker)
                     inference_ms = (time.monotonic()-started_inference)*1000
                     detections = []
                     apparent_speeds = []
                     calibrated_speeds = []
                     now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
-                    if tracked.boxes is not None and len(tracked.boxes):
-                        xyxy = tracked.boxes.xyxy.cpu().tolist()
-                        probs = tracked.boxes.conf.cpu().tolist()
-                        cls_ids = tracked.boxes.cls.int().cpu().tolist()
-                        ids = tracked.boxes.id.int().cpu().tolist() if tracked.boxes.id is not None else [None] * len(xyxy)
-                        for bounds, confidence, cls_id, track_id in zip(xyxy, probs, cls_ids, ids):
-                            class_name = tracked.names[cls_id]
+                    for observation in observations:
+                            bounds = observation["bounds"]
+                            confidence = observation["confidence"]
+                            track_id = observation.get("track_id")
+                            class_name = observation["cls"]
                             x1, y1, x2, y2 = [round(float(v), 1) for v in bounds]
                             # Tracker sees the crop, but all downstream data and
                             # the full original video remain in SOURCE coordinates.
