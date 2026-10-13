@@ -668,18 +668,33 @@ try {
  }
  requestAnimationFrame(animate);
 } catch(error){
- const message="3D scene unavailable: "+String(error).slice(0,220);
- const el=document.getElementById("error");el.style.display="block";
- el.textContent=message;
- const panel=document.getElementById("simulation");
- if(panel){
-   const loader=document.getElementById("modelLoading");
-   if(loader)loader.hidden=true;
-   const overlay=document.createElement("div");
-   overlay.setAttribute("role","alert");
-   overlay.style.cssText="position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:22px;background:#fff1ee;color:#9f302c;font-size:14px;text-align:center;line-height:1.6";
-   overlay.textContent=message;
-   panel.appendChild(overlay);
+ // Video evidence must keep working even if Three.js/WebGL is blocked.
+ // Do not erase or cover the comparison with a permanent red panel.
+ const message="3D inspection isn't available in this browser. Original video comparison remains usable.";
+ const info=document.getElementById("comparisonDetail");
+ if(info)info.textContent=message;
+ const loader=document.getElementById("modelLoading");
+ if(loader)loader.hidden=true;
+ const video=document.getElementById("sourceVideo");
+ const view=document.getElementById("liveFrame");
+ const camera=document.getElementById("camera");
+ if(view&&video&&view.getContext){
+   const ctx=view.getContext("2d");
+   const paint=()=>{
+     if(video.readyState>=2&&video.videoWidth>0){
+        if(view.width!==video.videoWidth||view.height!==video.videoHeight){
+          view.width=video.videoWidth;view.height=video.videoHeight;
+        }
+        try{ctx.drawImage(video,0,0,view.width,view.height)}catch(ignored){}
+     }
+     requestAnimationFrame(paint);
+   };
+   requestAnimationFrame(paint);
+   if(camera){camera.value="source";camera.disabled=true;}
+ }
+ const selector=document.getElementById("intervention");
+ if(selector){
+   selector.innerHTML='<option value="inspection">Original video only — 3D temporarily unavailable</option>';
  }
  console.error(error);
 }
