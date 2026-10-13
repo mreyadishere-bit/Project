@@ -12,6 +12,7 @@ import streamlit as st
 
 from insight_engine import explain_video
 from simulation_ui import simulation_panel
+from reconstruction_ui import render_reconstruction
 
 
 def _section(title: str, subtitle: str = ""):
@@ -130,6 +131,24 @@ def results_page(job, snap, hosted: bool):
             st.caption("Higher means more sampled frames matched exploratory flags. Not a road safety grade.")
 
     _numbers(snap)
+    _section("Vehicle flow through a counting line","Passed vehicles are measured separately from objects visible in any one frame")
+    crossing=snap.get("crossings") or {}
+    c1,c2,c3=st.columns(3)
+    c1.metric("Vehicles crossing the line",crossing.get("total_passed",0),
+              help="Unique tracked vehicles whose detected footpoints cross the chosen line exactly once; tracker dropouts can affect counts.")
+    c2.metric("Track IDs seen",sum(evidence.get("unique_track_ids_by_class",{}).values()),
+              help="Not equivalent to actual unique cars passing the camera.")
+    c3.metric("Peak simultaneously visible",snap.get("max_vehicles",0),
+              help="Maximum vehicles in any single sampled frame; not total traffic.")
+    st.caption(f"Counting line at {100*crossing.get('line_y_fraction',.5):.0f}% of frame height. If a vehicle never crosses the line, it isn't counted. If a track breaks, some cars may be missed or double-counted.")
+    if crossing.get("passed_by_class"):
+        st.bar_chart(pd.DataFrame(
+            [{"Class":name,"Passed":count} for name,count in crossing["passed_by_class"].items()]
+        ).set_index("Class"),height=180)
+    if snap.get("calibration"):
+        st.caption("Road-plane homography calibration was supplied; per-track estimated world positions, headings and km/h are included in the object CSV. These are NOT validated speed-enforcement measurements.")
+    else:
+        st.caption("Road-plane calibration not supplied; real-world speed/angle outputs are not claimed.")
 
     _section("02 · Final analyzed video","Play the result here, not in a separate file")
     if snap.get("video_ready") and job.video_file.exists():
@@ -201,10 +220,12 @@ def results_page(job, snap, hosted: bool):
                 st.caption("Verification before real construction: "+rec["verify"])
     st.caption("These recommendations are rule-based explanations grounded in detector observations. They are not licensed engineering designs or measured benefits.")
 
-    _section("06 · Before / after traffic simulation","Change assumptions; see a simple animated 3D-style road model")
+    _section("06 · Video-matched 3D scene replay","Track positions and original timestamps with editable 3D scene interventions")
+    render_reconstruction(job,snap)
+    _section("07 · Additional traffic simulation","Compare hypothetical traffic scenarios in a separate simplified 2.5D model")
     simulation_panel()
 
-    _section("07 · Download your full analysis","Transparent evidence and documented assumptions")
+    _section("08 · Download your full analysis","Transparent evidence and documented assumptions")
     report={
         "project":"Smart Road AI research v4",
         "source":snap["label"],
@@ -212,6 +233,8 @@ def results_page(job, snap, hosted: bool):
         "analysis_status":snap["status"],
         "analyzed_frames":snap["analyzed_frames"],
         "evidence":evidence,
+        "crossings":snap.get("crossings"),
+        "calibration":snap.get("calibration"),
         "plain_language_summary":story,
         "limitations":[
             "Image proximity is not a physical near miss.",
