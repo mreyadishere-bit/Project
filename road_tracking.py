@@ -17,66 +17,107 @@ def iou(a,b):
     return inter/max(1e-6,aa+bb-inter)
 
 class RoadTracker:
-    """Bounded approximate IDs; does not alter detections or claim identity certainty."""
+    """Motion-gated global association; raw YOLO boxes are never discarded.
+
+    Global LAP matching avoids greedy local collisions in dense traffic.
+    Prediction is image-plane-only, not a metric vehicle-identity guarantee.
+    """
     def __init__(self,max_age=12,minimum_iou=.06):
         self.max_age=max_age
         self.minimum_iou=minimum_iou
         self.states={}
         self.frame=0
         self.next_id=1
+        self.last_association="none"
+
+    @staticmethod
+    def _foot(box):
+        return ((float(box[0])+float(box[2]))/2,float(box[3]))
+
+    @staticmethod
+    def _size(box):
+        return (max(2.,float(box[2])-float(box[0])),
+                max(2.,float(box[3])-float(box[1])))
 
     def update(self,detections,shape):
-        """Input dicts: bounds=[x1,y1,x2,y2], cls=string, confidence."""
+        """Input object dicts: bounds=(x1,y1,x2,y2), cls, confidence."""
         self.frame+=1
-        height,width=shape[:2]
+        # Only past viable tracks may receive the new detector observations.
         for key in list(self.states):
             if self.frame-self.states[key]["frame"]>self.max_age:
                 self.states.pop(key,None)
+        track_ids=list(self.states)
+        n=len(track_ids);m=len(detections)
         proposals=[]
-        for j,d in enumerate(detections):
-            bbox=d["bounds"]
-            x=(bbox[0]+bbox[2])/2
-            y=bbox[3] # road-plane contact better than box centre
-            w=max(1,bbox[2]-bbox[0])
-            h=max(1,bbox[3]-bbox[1])
-            for ident,state in self.states.items():
-                if d["cls"]!=state["cls"]:continue
-                prev=state["bounds"]
+        if n and m:
+            import numpy as np
+            cost=np.full((n,m),1e6,np.float64)
+            for i,ident in enumerate(track_ids):
+                state=self.states[ident]
+                old=state["bounds"]
+                ox,oy=self._foot(old)
+                old_w,old_h=self._size(old)
                 age=max(1,self.frame-state["frame"])
-                v=state["velocity"]
-                px=(prev[0]+prev[2])/2+v[0]*age
-                py=prev[3]+v[1]*age
-                norm=max(20,w,h,prev[2]-prev[0],prev[3]-prev[1])
-                delta=hypot((x-px)/norm,(y-py)/norm)
-                overlap=iou(bbox,prev)
-                # Admit large motion for near-camera cars; don't associate
-                # opposite side of a divided road (diagonal cap).
-                if delta>max(.95,1.2*age**.5) and overlap<self.minimum_iou:continue
-                score=overlap*.64+.36/(1+delta)-.008*(age-1)
-                proposals.append((score,j,ident))
-        proposals.sort(reverse=True)
-        used_d=set();used_t=set()
-        mapping={}
-        for score,j,ident in proposals:
-            if j in used_d or ident in used_t:continue
-            if score<.125:continue
-            mapping[j]=ident
-            used_d.add(j);used_t.add(ident)
+                vx,vy=state["velocity"]
+                px,py=ox+vx*age,oy+vy*age
+                for j,d in enumerate(detections):
+                    if d["cls"]!=state["cls"]:
+                        continue
+                    box=d["bounds"]
+                    x,y=self._foot(box)
+                    w,h=self._size(box)
+                    # Preserve perspective sizing but penalize impossible
+                    # sudden size changes / switches between nearby objects.
+                    size_ratio=max(w/old_w,old_w/w,h/old_h,old_h/h)
+                    if size_ratio>3.0:
+                        continue
+                    norm=max(14.,w,h,old_w,old_h)
+                    predicted_delta=hypot((x-px)/norm,(y-py)/norm)
+                    if predicted_delta>min(2.7,1.5+.18*(age-1)):
+                        continue
+                    box_iou=iou(box,old)
+                    direction_cost=.23*predicted_delta
+                    appearance_cost=.16*(1-box_iou)
+                    scale_cost=.10*(size_ratio-1)
+                    staleness=.025*(age-1)
+                    cost[i,j]=direction_cost+appearance_cost+scale_cost+staleness
+            try:
+                import lap
+                _,row_assign,_=lap.lapjv(cost,extend_cost=True,cost_limit=.82)
+                proposals=[(j,track_ids[i]) for i,j in enumerate(row_assign)
+                           if j>=0 and cost[i,j]<.82]
+                self.last_association="global_lap"
+            except (ImportError,RuntimeError,ValueError):
+                # Still work in minimal offline environments with no lap,
+                # but production declares lap in requirements.
+                edges=sorted((cost[i,j],i,j) for i in range(n)
+                             for j in range(m) if cost[i,j]<.82)
+                used_i=set();used_j=set()
+                for _,i,j in edges:
+                    if i not in used_i and j not in used_j:
+                        used_i.add(i);used_j.add(j)
+                        proposals.append((j,track_ids[i]))
+                self.last_association="greedy_fallback"
+        else:
+            self.last_association="no_matches"
+        mapping=dict(proposals)
         out=[]
         for j,d in enumerate(detections):
             ident=mapping.get(j)
-            bbox=d["bounds"]
+            box=tuple(map(float,d["bounds"]))
             if ident is None:
                 ident=self.next_id
                 self.next_id+=1
                 vel=(0.,0.)
             else:
-                old=self.states[ident]
-                old_box=old["bounds"]
-                age=max(1,self.frame-old["frame"])
-                vel=(((bbox[0]+bbox[2]-old_box[0]-old_box[2])/2)/age,
-                     (bbox[3]-old_box[3])/age)
-            self.states[ident]={"bounds":tuple(bbox),"cls":d["cls"],
+                previous=self.states[ident]
+                age=max(1,self.frame-previous["frame"])
+                x,y=self._foot(box)
+                ox,oy=self._foot(previous["bounds"])
+                dx,dy=(x-ox)/age,(y-oy)/age
+                v=previous["velocity"]
+                vel=(.65*dx+.35*v[0],.65*dy+.35*v[1])
+            self.states[ident]={"bounds":box,"cls":d["cls"],
                                 "frame":self.frame,"velocity":vel}
             out.append({**d,"track_id":ident})
         return out
