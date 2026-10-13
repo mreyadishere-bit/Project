@@ -37,5 +37,10 @@ jobs:
           if app.exception:
               raise AssertionError(f'Streamlit runtime exception: {app.exception}')
           assert app.radio, 'Expected interactive navigation'
-          print('Hosted UI rendered successfully')
+          for section in ['Intelligence', 'Events & reports', 'Workspace']:
+              app.radio[0].set_value(section)
+              app.run(timeout=35)
+              if app.exception:
+                  raise AssertionError(f'Error on {section}: {app.exception}')
+          print('Hosted UI navigation and all empty states rendered successfully')
           PY
