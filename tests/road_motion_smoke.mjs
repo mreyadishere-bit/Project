@@ -38,6 +38,12 @@ assert.deepEqual(prepareMotion([p(0),p(.2)]),[],
 assert.ok(source.includes("sampleEdge"),"Car heading must follow lane centerline, not box jitter");
 assert.ok(!src.includes('Math.atan2(-delta.x,-delta.z);entry.obj.rotation.y'),
           "Remove direct instantaneous per-frame noisy heading");
-assert.ok(src.includes('id="modelLoading"') && src.includes("backgroundReady.then"),
-          "Loading state must wait for a first rendered frame and the source road photo");
+assert.ok(src.includes('id="modelLoading"') && src.includes("renderVideoMatchedFrame(t)"),
+          "Loading state must wait for the first decoded original VIDEO frame");
+assert.ok(src.includes("videoCtx.drawImage(video,0,0,frameWidth,frameHeight)"),
+          "Matched view must copy the ACTUAL VIDEO FRAME without stale median image");
+assert.ok(src.includes('renderer.domElement.style.display=aligned?"none":"block"'),
+          "Source view must not draw duplicate generic Three.js cars on top of real moving cars");
+assert.ok(!src.includes('background_photo(job,'),
+          "Do not median-blend moving nighttime lights into the live matched view");
 console.log("Motion regression passed: fade, stable segments, jitter filtering, lane heading and loading lifecycle");
