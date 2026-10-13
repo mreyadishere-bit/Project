@@ -21,11 +21,24 @@ try{
              "Camera fit quality must be shown, not hidden");
  assert.match(stats,/visible tracked meshes/,
              "Actual tracked-world car mesh replay must be live");
+ const projectionText=await page.locator("#projectionStatus").textContent();
+ const reprojection=Number(projectionText.match(/([\d.]+) px RMSE/)?.[1]);
+ assert.ok(Number.isFinite(reprojection)&&reprojection<6,
+    "Actual Three.js measured-road reprojection must agree with surveyed source frame: "+projectionText);
+ await page.locator("#mode").selectOption("signal");
+ await page.waitForTimeout(450);
+ const scenario=await page.locator("#stats").textContent();
+ assert.match(scenario,/HYPOTHETICAL/,"Surveyed road must show an optional functional signal concept");
+ assert.match(scenario,/simulated vehicles/,"Simulated traffic must stay separate from observed tracks");
+ await page.locator("#mode").selectOption("observed");
  await page.locator("#top").click();
  await page.waitForTimeout(350);
  await page.screenshot({path:"surveyed-road-top.png",fullPage:true});
  await page.locator("#sourceview").click();
  await page.waitForTimeout(350);
+ const restored=await page.locator("#projectionStatus").textContent();
+ const restoredError=Number(restored.match(/([\d.]+) px RMSE/)?.[1]);
+ assert.ok(restoredError<6,"Source camera reset must restore actual PnP pose: "+restored);
  await page.screenshot({path:"surveyed-road-source.png",fullPage:true});
  assert.equal(await page.locator("#view canvas").count(),1);
  assert.deepEqual(errors,[],"Browser JS errors must not be silently masked");
