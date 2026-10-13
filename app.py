@@ -12,7 +12,7 @@ HOSTED = os.environ.get("SMART_ROAD_HOSTED", "0") == "1"
 
 st.set_page_config(page_title="Smart Road AI | Road Intelligence Lab", page_icon="🛣️", layout="wide")
 if HOSTED:
-    from video_ui import video_tab
+    from simple_workspace import video_tab
     video_tab()
     st.stop()
 if not HOSTED:
