@@ -20,7 +20,7 @@ class RoadStructureTests(unittest.TestCase):
             cv2.line(image,(x,539),(479,150),(250,250,250),4,cv2.LINE_AA)
         result=suggest_perspective(image)
         self.assertGreater(len(result["line_candidates"]),2)
-        self.assertIn("not",result["notes"].lower())
+        self.assertIn("no semantic lane identification",result["notes"].lower())
         self.assertNotIn("width_m",result)
         overlay=draw_perspective_hints(image,result)
         self.assertEqual(overlay.shape,image.shape)
