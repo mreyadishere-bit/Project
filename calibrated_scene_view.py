@@ -83,7 +83,16 @@ try{
  // shifting road landmarks despite mathematically correct PnP extrinsics.
  const homeUp=new T.Vector3(0,1,0).applyQuaternion(homeQuaternion);
  camera.up.copy(homeUp);
+ // A dedicated, NEVER orbit-controlled source camera preserves solvePnP
+ // extrinsics exactly. Free orbit operates on a separate camera instance.
+ const sourceCamera=new T.PerspectiveCamera(camera.fov,camera.aspect,.02,1000);
+ sourceCamera.position.copy(homePosition);
+ sourceCamera.quaternion.copy(homeQuaternion);
+ sourceCamera.up.copy(homeUp);
+ sourceCamera.updateMatrixWorld(true);
+ let useOrbit=false;
  const controls=new OrbitControls(camera,renderer.domElement);
+ controls.enabled=false;
  controls.enableDamping=true;
  const center=new T.Vector3(metric.width_m/2,0,-metric.length_m/2);
  // Preserve calibrated camera orientation in SOURCE mode. Re-aiming Orbit
@@ -254,7 +263,8 @@ try{
      extra=" · HYPOTHETICAL "+(frame?.phase||"no phase").replaceAll("_"," ")+
        " · "+n+" simulated vehicles on surveyed patch · independent "+simulatedClock.toFixed(1)+"s clock";
    }
-   controls.update();renderer.render(scene,camera);
+   if(useOrbit)controls.update();
+   renderer.render(scene,useOrbit?camera:sourceCamera);
    document.getElementById("stats").textContent=
      "Surveyed flat patch "+metric.width_m.toFixed(1)+" m × "+metric.length_m.toFixed(1)+
      " m · Camera fit RMSE "+metric.reprojection_rmse_px.toFixed(1)+
@@ -277,8 +287,8 @@ try{
  const validateProjection=()=>{
    // project() reads the camera's cached inverse matrix. Geometry is only
    // trustworthy after synchronizing the current pose into matrixWorld.
-   camera.updateMatrixWorld(true);
-   const reproject=corners3D.map(p=>p.clone().project(camera));
+   sourceCamera.updateMatrixWorld(true);
+   const reproject=corners3D.map(p=>p.clone().project(sourceCamera));
    const pixels=reproject.map(v=>[(v.x+1)*data.width/2,(1-v.y)*data.height/2]);
    const squared=pixels.map((p,i)=>
       Math.pow(p[0]-data.calibration.points[i][0]*data.width,2)+
@@ -295,17 +305,22 @@ try{
    const vwidth=Math.min(w,h*ratio),vheight=vwidth/ratio;
    renderer.setViewport((w-vwidth)/2,(h-vheight)/2,vwidth,vheight);
    camera.aspect=ratio;camera.updateProjectionMatrix();
-   // Reprojection is only checked in source orientation (not free orbit).
-   if(camera.position.distanceTo(homePosition)<.002)validateProjection();
+   sourceCamera.aspect=ratio;sourceCamera.updateProjectionMatrix();
+   validateProjection();
  };
  new ResizeObserver(resize).observe(view);resize();
  document.getElementById("sourceview").onclick=()=>{
+   useOrbit=false;controls.enabled=false;
    camera.position.copy(homePosition);camera.quaternion.copy(homeQuaternion);
    camera.up.copy(homeUp);
    controls.target.copy(sourceTarget);controls.update();
+   sourceCamera.position.copy(homePosition);
+   sourceCamera.quaternion.copy(homeQuaternion);
+   sourceCamera.updateMatrixWorld(true);
    validateProjection();
  };
  document.getElementById("top").onclick=()=>{
+   useOrbit=true;controls.enabled=true;
    camera.up.set(0,0,-1);
    camera.position.set(metric.width_m/2,Math.max(28,metric.length_m*1.15),-metric.length_m/2+.01);
    controls.target.copy(center);controls.update();
