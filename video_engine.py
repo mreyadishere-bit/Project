@@ -251,17 +251,27 @@ class VideoJob:
                 self.device = "GPU (CUDA)" if device == "0" else "CPU"
                 self.status = "loading model"
             model = YOLO(self.settings.model_name)
-            cap = cv2.VideoCapture(capture_source)
-            if not cap.isOpened():
-                raise ValueError("Cannot open source. Check file path or camera permissions / camera index.")
+            if self.source_kind == "youtube":
+                from live_decoder import FFmpegLiveCapture
+                cap = FFmpegLiveCapture(capture_source, fps=min(5, self.settings.analysis_fps))
+                if not cap.isOpened():
+                    raise RuntimeError(
+                        "FFmpeg could not start decoding this YouTube video. "
+                        "The source may require different transport or be unavailable from this server."
+                    )
+            else:
+                cap = cv2.VideoCapture(capture_source)
+                if not cap.isOpened():
+                    raise ValueError("Cannot open video or camera. Check the local file path or camera permissions.")
             if self.is_live:
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                 reconnect_factory = None
                 if self.source_kind == "youtube":
                     def reconnect_factory():
                         from live_sources import resolve_youtube_live
+                        from live_decoder import FFmpegLiveCapture
                         renewed_url, _ = resolve_youtube_live(self.source)
-                        return cv2.VideoCapture(renewed_url)
+                        return FFmpegLiveCapture(renewed_url, fps=min(5, self.settings.analysis_fps))
                 camera_reader = LatestCameraFrames(cap, self._stop, reconnect_factory=reconnect_factory)
             video_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0)
             if not (1 <= video_fps <= 240):
@@ -282,6 +292,8 @@ class VideoJob:
             i = 0
             last_camera_version = 0
             live_start = time.monotonic()
+            # A blocked/live source should not spin indefinitely at zero frames.
+            initial_frame_deadline = live_start + 35.0 if self.source_kind == "youtube" else None
             previous_points: dict[int, tuple[float, float]] = {}
             previous_motion: dict[int, tuple[float, float, float]] = {}
             last_emitted: dict[str, float] = {}
@@ -305,7 +317,15 @@ class VideoJob:
                     if self.is_live:
                         ok, frame, last_camera_version = camera_reader.next_frame(last_camera_version)
                         if not ok:
+                            if initial_frame_deadline and time.monotonic() >= initial_frame_deadline:
+                                raise RuntimeError(
+                                    "FFmpeg could not decode any frames from this YouTube livestream "
+                                    "within 35 seconds. YouTube playback in your browser does not "
+                                    "guarantee the server can access the video. "
+                                    "Try an authorized HLS camera feed or a recorded upload."
+                                )
                             continue  # A slow/no frame interval, not necessarily a failure.
+                        initial_frame_deadline = None
                     else:
                         ok, frame = cap.read()
                         if not ok:
