@@ -6,7 +6,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scene_intelligence import image_motion, scene_diagnostics, diagnostic_events, visual_proximity
+from scene_intelligence import image_motion, scene_diagnostics, diagnostic_events, visual_proximity, draw_scene_overlay
 
 
 class SceneIntelligenceTests(unittest.TestCase):
@@ -40,6 +40,16 @@ class SceneIntelligenceTests(unittest.TestCase):
         self.assertTrue(diag["low_image_brightness"])
         self.assertGreater(diag["occupancy_ratio"], 0)
         self.assertFalse(diag["dense_scene"])
+
+    def test_branded_video_overlay_draws_without_mutating_frame(self):
+        image = np.zeros((120, 160, 3), dtype=np.uint8)
+        objects = [{
+            "class": "car", "x1": 20, "y1": 20, "x2": 90, "y2": 100,
+            "track_id": 4, "confidence": .87, "calibrated_speed_kmh": None
+        }]
+        output = draw_scene_overlay(image, objects)
+        self.assertTrue(np.any(output != image))
+        self.assertFalse(np.any(image))
 
     def test_event_cooldown(self):
         d = {"low_image_brightness": True, "dense_scene": False, "visual_proximity_pairs": 0}
