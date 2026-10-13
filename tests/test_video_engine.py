@@ -183,6 +183,38 @@ class VideoTests(unittest.TestCase):
             finally:
                 video_engine.OUTPUTS=old
 
+    def test_road_roi_keeps_full_frame_source_coordinates(self):
+        import video_engine
+        fake=types.ModuleType("ultralytics")
+        calls=[]
+        class RoiYOLO(FakeYOLO):
+            def track(self, frame, **kwargs):
+                calls.append(frame.shape[:2])
+                return super().track(frame,**kwargs)
+        fake.YOLO=RoiYOLO
+        with tempfile.TemporaryDirectory() as td:
+            old=video_engine.OUTPUTS
+            video_engine.OUTPUTS=Path(td)/"out"
+            try:
+                clip=Path(td)/"roi.avi"
+                create_video(clip,frames=12,fps=5)
+                with patch.dict(sys.modules,{"ultralytics":fake,"torch":fake_torch}):
+                    job=VideoJob(str(clip),VideoSettings(
+                        analysis_fps=5,roi_rect=(.25,.25,.75,.75)),label="roi")
+                    job._thread.join(timeout=25)
+                snap=job.snapshot()
+                self.assertEqual(snap["status"],"completed",snap["error"])
+                self.assertEqual(snap["frame_width"],128)
+                self.assertEqual(snap["frame_height"],96)
+                self.assertTrue(calls)
+                self.assertEqual(calls[0],(48,64))
+                with job.objects_file.open(encoding="utf-8-sig",newline="") as stream:
+                    row=next(csv.DictReader(stream))
+                self.assertAlmostEqual(float(row["x1"]),52)
+                self.assertAlmostEqual(float(row["y1"]),34)
+            finally:
+                video_engine.OUTPUTS=old
+
     def test_camera_open_failure_is_reported(self):
         from video_engine import OUTPUTS
         import video_engine
