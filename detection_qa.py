@@ -14,7 +14,7 @@ import math
 
 
 def _data(source):
-    if isinstance(source,(str,Path)):
+    if isinstance(source,Path) or (isinstance(source,str) and "\\n" not in source and "\\r" not in source):
         with Path(source).open("r",encoding="utf-8-sig",newline="") as f:
             return list(csv.DictReader(f))
     if isinstance(source,bytes):
