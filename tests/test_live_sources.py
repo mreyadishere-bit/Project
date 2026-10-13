@@ -169,7 +169,7 @@ class LiveWorkerTests(unittest.TestCase):
                     patch.dict(sys.modules, {"ultralytics": fake_yolo, "torch": fake_torch}),
                     patch("live_sources.resolve_youtube_live",
                           return_value=("https://stream.example.com/live.m3u8", "Public Road")),
-                    patch("video_engine.cv2.VideoCapture", side_effect=Capture),
+                    patch("live_decoder.FFmpegLiveCapture", side_effect=Capture),
                 ):
                     job = VideoJob("https://youtu.be/jfKfPfyJRdk", VideoSettings(), source_kind="youtube")
                     try:
