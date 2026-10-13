@@ -20,11 +20,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install numpy opencv-python-headless "lap>=0.5.12,<1"
-          python -m pip install 'streamlit>=1.40,<2' 'pandas>=2,<3' 'requests>=2,<3'
+          python -m pip install 'streamlit>=1.40,<2' 'pandas>=2,<3' 'requests>=2,<3' 'yt-dlp>=2025.1.15,<2028'
       - name: Smoke test ByteTrack assignment dependency
         run: python -c "import lap, numpy as np; cost, rows, cols = lap.lapjv(np.array([[0.0, 1.0], [1.0, 0.0]])); assert list(rows) == [0, 1]"
       - name: Compile Python
-        run: python -m compileall -q app.py video_ui.py ui_theme.py video_engine.py scene_intelligence.py analysis.py database.py receiver.py routes.py weather.py
+        run: python -m compileall -q app.py video_ui.py ui_theme.py video_engine.py scene_intelligence.py live_sources.py analysis.py database.py receiver.py routes.py weather.py
       - name: Run tests
         run: python -m unittest discover -s tests -v
       - name: Smoke-test hosted Streamlit UI
@@ -42,5 +42,12 @@ jobs:
               app.run(timeout=35)
               if app.exception:
                   raise AssertionError(f'Error on {section}: {app.exception}')
-          print('Hosted UI navigation and all empty states rendered successfully')
+          app.radio[0].set_value('Workspace')
+          app.run(timeout=35)
+          app.radio[1].set_value('YouTube Live (beta)')
+          app.run(timeout=35)
+          if app.exception:
+              raise AssertionError(f'Error on live source selector: {app.exception}')
+          assert any('YouTube LIVE URL' in item.label for item in app.text_input)
+          print('Hosted UI, navigation and YouTube source form render successfully')
           PY
