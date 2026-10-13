@@ -17,6 +17,7 @@ import streamlit as st
 from ui_theme import apply_theme
 from video_engine import VideoJob, VideoSettings, OUTPUTS
 from live_sources import canonical_youtube_live_url
+from public_cameras import get_camera, camera_choices
 
 STATUS = {
     "starting": ("Starting", "blue"),
@@ -121,7 +122,7 @@ def source_and_settings(hosted: bool, running: bool):
     """Draw inputs and return validated form selections without starting jobs."""
     section_header("New analysis", "01 / Choose a source and processing profile")
     with st.container(border=True):
-        options = ["Upload video", "YouTube Live (beta)"]
+        options = ["Free Live Traffic Cameras", "Upload video", "YouTube Live (beta)"]
         if not hosted:
             options += ["Local file", "PC camera"]
         source_mode = st.radio("Video source", options, horizontal=True, disabled=running, key="sr_source")
@@ -130,7 +131,33 @@ def source_and_settings(hosted: bool, running: bool):
         uploaded = None
         source = None
         label = ""
-        if source_mode == "Upload video":
+        if source_mode == "Free Live Traffic Cameras":
+            choices = camera_choices()
+            source = st.selectbox(
+                "Public agency traffic camera", list(choices),
+                format_func=lambda key: choices[key],
+                key="sr_official_camera", disabled=running
+            )
+            camera = get_camera(source)
+            label = camera["label"]
+            st.caption(f"Source: {camera['operator']} · {camera['region']}")
+            st.caption("Real agency HLS video, when operational · Free to view · No YouTube extractor. Availability can change.")
+            st.link_button("Official camera directory & terms ↗", camera["info_url"])
+            if st.button("Check first video frame", disabled=running, key="sr_check_public_camera"):
+                with st.spinner("Checking for a real frame (up to 18 seconds)..."):
+                    try:
+                        from camera_check import check_first_frame
+                        frame = check_first_frame(camera["stream_url"])
+                        st.session_state["sr_camera_verified"] = (source, frame)
+                    except Exception as exc:
+                        st.session_state.pop("sr_camera_verified", None)
+                        st.warning(f"Camera is currently unreachable from this server: {exc}")
+            verified = st.session_state.get("sr_camera_verified")
+            if verified and verified[0] == source:
+                st.success("Verified: an actual video frame arrived from this camera.")
+                st.image(verified[1], use_container_width=True)
+                st.caption("One camera frame. AI starts only after clicking Start analyzing.")
+        elif source_mode == "Upload video":
             uploaded = st.file_uploader(
                 "Drop your footage here", type=["mp4", "avi", "mov", "mkv", "m4v"],
                 disabled=running, key="sr_video_upload",
@@ -183,7 +210,7 @@ def source_and_settings(hosted: bool, running: bool):
                 confidence = st.slider("Minimum confidence", .1, .9, .35, .05, disabled=running)
             with c2:
                 all_classes = st.checkbox("Detect all supported YOLO classes", value=False, disabled=running)
-                save_video = st.checkbox("Export annotated video", value=False, disabled=running or source_mode in {"PC camera", "YouTube Live (beta)"})
+                save_video = st.checkbox("Export annotated video", value=False, disabled=running or source_mode in {"PC camera", "YouTube Live (beta)", "Free Live Traffic Cameras"})
                 if save_video:
                     st.caption("Uses significant disk space on long recordings.")
         with st.expander("Speed calibration (optional, research only)"):
@@ -208,6 +235,9 @@ def source_and_settings(hosted: bool, running: bool):
                         raise ValueError("Upload a video first.")
                     with st.spinner("Preparing video..."):
                         actual = str(save_uploaded_video(uploaded))
+                elif source_mode == "Free Live Traffic Cameras":
+                    actual = str(source)
+                    get_camera(actual)
                 elif source_mode == "YouTube Live (beta)":
                     if not source:
                         raise ValueError("Paste an active public YouTube LIVE video URL.")
@@ -224,9 +254,9 @@ def source_and_settings(hosted: bool, running: bool):
                     actual, VideoSettings(
                         model_name=model, confidence=confidence, image_size=image_size,
                         analysis_fps=fps, all_classes=all_classes,
-                        save_video=bool(save_video and source_mode not in {"PC camera", "YouTube Live (beta)"}),
+                        save_video=bool(save_video and source_mode not in {"PC camera", "YouTube Live (beta)", "Free Live Traffic Cameras"}),
                         meters_per_pixel=meters_per_pixel
-                    ), label=label, source_kind="youtube" if source_mode == "YouTube Live (beta)" else "file"
+                    ), label=label, source_kind=("youtube" if source_mode == "YouTube Live (beta)" else "public_live" if source_mode == "Free Live Traffic Cameras" else "file")
                 )
                 st.rerun()
             except Exception as exc:
@@ -238,12 +268,17 @@ def video_stage(snap, job):
     left, right = st.columns([1.8, 1], gap="medium")
     with left:
         with st.container(border=True):
-            if (snap and snap.get("source_kind") == "youtube"
+            if (snap and snap.get("source_kind") == "public_live"
+                    and snap.get("status") == "error" and not snap.get("preview_jpeg")):
+                st.warning("This official camera could not supply any frames. No AI analysis took place.")
+                details = get_camera(job.source)
+                st.link_button("See the official camera directory ↗", details["info_url"])
+            elif (snap and snap.get("source_kind") == "youtube"
                     and snap.get("status") == "error" and not snap.get("preview_jpeg")):
                 st.warning("YouTube player preview only — 0 frames reached the AI. This is NOT an analyzed video.")
                 st.video(job.source)
                 st.caption("Playback can be available in your browser even when YouTube blocks server-side frame extraction.")
-            elif snap and snap.get("source_kind") == "youtube" and snap.get("status") == "running" and not snap.get("preview_jpeg"):
+            elif snap and snap.get("source_kind") in {"youtube", "public_live"} and snap.get("status") == "running" and not snap.get("preview_jpeg"):
                 st.info("Connecting to live video frames through FFmpeg. The AI has not received an image yet. If decoding cannot start, the job will report an error rather than displaying imaginary detections.")
                 st.markdown(
                     '<div class="sr-empty" style="min-height:260px"><div class="sr-empty-icon">⌁</div>'
@@ -259,8 +294,8 @@ def video_stage(snap, job):
                     st.caption(f"Representative detected frame at {snap['best_preview_at']:.1f}s · The very last frame had no detected objects.")
                 else:
                     st.caption(f"Latest analyzed frame · {snap['video_second']:.1f}s · Overlays are model estimates.")
-                if snap.get("source_kind") == "youtube":
-                    st.caption("LIVE SOURCE · Analyzed frames may lag behind the original broadcast; only the latest decoded frames are kept.")
+                if snap.get("source_kind") in {"youtube", "public_live"}:
+                    st.caption("LIVE SOURCE · Results are based on sampled decoded frames and can lag behind the broadcast.")
             else:
                 st.markdown(
                     '<div class="sr-empty"><div class="sr-empty-icon">⌁</div>'
@@ -309,6 +344,10 @@ def video_stage(snap, job):
                     if st.button("＋ New analysis", use_container_width=True, key="sr_new_job"):
                         st.session_state["video_job"] = None
                         st.rerun()
+    if snap and snap.get("source_kind") == "public_live":
+        details = get_camera(job.source)
+        st.caption(f"Camera credit: {details['operator']} · See agency terms for footage reuse.")
+        st.link_button("Agency information & conditions ↗", details["info_url"])
     if snap and snap.get("source_kind") == "youtube" and snap.get("status") != "error":
         with st.expander("Original YouTube live player (independent, not synchronized)"):
             st.video(job.source)
