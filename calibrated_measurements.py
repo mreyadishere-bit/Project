@@ -37,6 +37,11 @@ def calibrated_tracks(objects_path, calibration:RoadCalibration, width:int, heig
     history=defaultdict(lambda:deque(maxlen=12))
     measures=defaultdict(list)
     paths=defaultdict(list)
+    measure_stride=defaultdict(lambda:1)
+    path_stride=defaultdict(lambda:1)
+    accepted_count=defaultdict(int)
+    observed_count=defaultdict(int)
+    last_accepted_speed={}
     ignored=defaultdict(int)
     rows=0
     with filepath.open(encoding="utf-8-sig",newline="") as handle:
@@ -76,30 +81,43 @@ def calibrated_tracks(objects_path, calibration:RoadCalibration, width:int, heig
                 if instantaneous_kmh>MAX_ACCEPTED_KMH[kind]*1.35:
                     ignored["track_discontinuity"]+=1
                     h.clear()
-            paths[key].append((round(timestamp,3),round(xy[0],3),round(xy[1],3)))
+            observed_count[key]+=1
+            # Bounded samples per ID even for hours-long video: decimate
+            # uniformly and retain coverage across the timeline.
+            if observed_count[key]%path_stride[key]==0:
+                paths[key].append((round(timestamp,3),round(xy[0],3),round(xy[1],3)))
+                if len(paths[key])>400:
+                    paths[key]=paths[key][::2]
+                    path_stride[key]*=2
             older=next((p for p in h if timestamp-p[0]>=min_window_s),None)
             if older is not None:
                 dt=timestamp-older[0]
                 kmh=3.6*hypot(xy[0]-older[1],xy[1]-older[2])/dt
-                previous=measures[key][-1]["speed_kmh"] if measures[key] else None
+                previous=last_accepted_speed.get(key)
                 # Suppress track-ID switches and very unstable camera-footpoints.
                 if (kmh<=MAX_ACCEPTED_KMH[kind] and
                     (previous is None or
                      abs(kmh-previous)/3.6/dt<=max_accel_mps2)):
-                    measures[key].append({
-                        "video_second":round(timestamp,2),
-                        "speed_kmh":round(kmh,2),
-                        "world_x_m":round(xy[0],3),
-                        "world_y_m":round(xy[1],3),
-                        "track_id":ident,"class":kind,
-                    })
+                    accepted_count[key]+=1
+                    last_accepted_speed[key]=round(kmh,2)
+                    if accepted_count[key]%measure_stride[key]==0:
+                        measures[key].append({
+                            "video_second":round(timestamp,2),
+                            "speed_kmh":round(kmh,2),
+                            "world_x_m":round(xy[0],3),
+                            "world_y_m":round(xy[1],3),
+                            "track_id":ident,"class":kind,
+                        })
+                        if len(measures[key])>512:
+                            measures[key]=measures[key][::2]
+                            measure_stride[key]*=2
                 else:
                     ignored["implausible_motion"]+=1
             h.append((timestamp,*xy))
     tracks=[]
     all_speeds=[]
     for (kind,ident),items in sorted(measures.items()):
-        if len(items)<min_support:
+        if accepted_count[(kind,ident)]<min_support:
             ignored["insufficient_track_support"]+=1
             continue
         speeds=[p["speed_kmh"] for p in items]
@@ -107,13 +125,14 @@ def calibrated_tracks(objects_path, calibration:RoadCalibration, width:int, heig
         all_speeds.extend(speeds)
         tracks.append({
             "class":kind,"track_id":ident,
-            "accepted_samples":len(items),
+            "accepted_samples":accepted_count[(kind,ident)],
+            "sampled_measurements":len(items),
             "median_speed_kmh":round(med,1),
             "min_speed_kmh":round(min(speeds),1),
             "max_speed_kmh":round(max(speeds),1),
             "first_second":items[0]["video_second"],
             "last_second":items[-1]["video_second"],
-            "points":paths[(kind,ident)][::max(1,len(paths[(kind,ident)])//400)],
+            "points":paths[(kind,ident)],
         })
     return {
         "status":"surveyed_planar_estimates",
@@ -128,6 +147,7 @@ def calibrated_tracks(objects_path, calibration:RoadCalibration, width:int, heig
             "survey_length_m":calibration.length_m,
             "min_window_s":min_window_s,
             "min_support_samples":min_support,
+            "bounded_samples":"At most 512 speed samples and 400 path points per stable ID, decimated over time; medians approximate for long videos.",
             "note":"Approximate tracked-footpoint ground speeds, NOT certified radar speed. "
                    "Sensitive to perspective, frame rate, footpoint accuracy, "
                    "occlusion and vehicle contact location. Not applicable to "
