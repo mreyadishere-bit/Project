@@ -26,7 +26,7 @@ BORDER=HexColor("#DFE7F0")
 def _p(value,style):
     return Paragraph(escape(str(value)).replace("\n","<br/>"),style)
 
-def build_road_pdf(snapshot,report,events,simulation=None):
+def build_road_pdf(snapshot,report,events,simulation=None,surveyed=None):
     buffer=BytesIO()
     document=SimpleDocTemplate(buffer,pagesize=A4,
             leftMargin=18*mm,rightMargin=18*mm,
@@ -120,6 +120,30 @@ def build_road_pdf(snapshot,report,events,simulation=None):
         story.append(_p(simulation.get("methodology","Hypothetical simulation only."),styles["small"]))
     else:
         story.append(_p("No intervention simulation was run for this report. No safety benefit can be inferred.",styles["body"]))
+    if surveyed:
+        cal=surveyed.get("calibration",{})
+        measurement=surveyed.get("tracks_report",{})
+        story.append(_p("User-surveyed metric road patch",styles["h"]))
+        story.append(_p(
+            f"Four planar reference corners provided by reviewer. "
+            f"Measured patch: {cal.get('width_m','?')} m wide × "
+            f"{cal.get('length_m','?')} m long. "
+            f"Camera pose fit RMSE: {surveyed.get('reprojection_error_px','?')} image pixels.",
+            styles["body"]))
+        speed=measurement.get("median_track_speed_kmh")
+        story.append(_p(
+            f"Tracked objects with enough valid surveyed-plane samples: "
+            f"{measurement.get('accepted_track_count',0)}. "
+            f"Median of the individual track speed estimates: "
+            f"{str(speed)+' km/h' if speed is not None else 'not reliably available'}.",
+            styles["body"]))
+        story.append(_p(
+            "These speeds rely on user-entered surveyed geometry and image "
+            "footpoint assumptions. They are not radar measurements, "
+            "certified speed enforcement evidence or measurements outside "
+            "the surveyed flat patch. A low reprojection error alone "
+            "does not validate the physical survey or object detections.",
+            styles["small"]))
     story.append(_p("Next steps and scientific limits",styles["h"]))
     story.append(_p("Manually verify the relevant video moments, classify the roadway, "
                     "survey crossing demand and lane geometry, and obtain real-world "
