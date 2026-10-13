@@ -50,6 +50,24 @@ class SignalConceptTests(unittest.TestCase):
                 self.assertGreaterEqual(car[1],-70)
                 self.assertLess(car[1],70)
 
+    def test_no_vehicle_pedestrian_overlap_across_varied_seeded_demand(self):
+        # The crossing scenario must remain logically safe under a range of
+        # assumed arrival rates, not just the default demonstration.
+        for seed in [1,7,17,42,91]:
+            for vehicles,pedestrians in [(300,120),(720,300),(1200,600)]:
+                with self.subTest(seed=seed,vehicles=vehicles,pedestrians=pedestrians):
+                    scenario=ControlInputs(seed=seed,seconds=120,
+                        vehicles_per_hour=vehicles,pedestrians_per_hour=pedestrians)
+                    frames=simulate(scenario)["managed"]["frames"]
+                    for frame in frames:
+                        in_crossing=any(-CROSSING_HALF_WIDTH<=car[1]<=CROSSING_HALF_WIDTH for car in frame["cars"])
+                        walking=any(ped[2]=="crossing" and -5<=ped[1]<=5 for ped in frame["people"])
+                        self.assertFalse(in_crossing and walking,
+                            f"Collision-zone overlap at t={frame['t']} phase={frame['phase']}")
+                        if frame["phase"]=="pedestrian_walk":
+                            self.assertFalse(in_crossing,
+                                f"Vehicle in crossing during WALK at t={frame['t']}")
+
     def test_rejects_unsupported_parameters(self):
         with self.assertRaises(ValueError):
             simulate(ControlInputs(speed_kmh=200))
