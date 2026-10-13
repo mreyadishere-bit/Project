@@ -35,14 +35,14 @@ video,canvas{display:block;width:100%;height:100%;object-fit:contain}
 </head><body>
 <div class="bar"><div><h3>Surveyed road — source-aligned reconstruction</h3>
 <div class="muted">Observed trajectories · Surveyed flat road patch · Approximate camera intrinsics</div></div>
-<div class="tools"><button id="pause">Play / Pause</button><button id="reset">Restart</button><button id="sourceview">Source view</button><button id="top">Top view</button></div></div>
+<div class="tools"><select id="mode" aria-label="Observed versus hypothetical" style="padding:9px;border-radius:9px;border:1px solid #d3e0ec"><option value="observed">Observed tracked movement</option><option value="signal">Hypothetical signal + pedestrian crossing</option></select><button id="pause">Play / Pause</button><button id="reset">Restart</button><button id="sourceview">Source view</button><button id="top">Top view</button></div></div>
 <div class="grid">
 <div class="card"><div class="heading">01 · Unmodified real recording</div>
 <div class="viewport"><video controls playsinline preload="metadata" id="source" src="__VIDEO__"></video></div>
 <div class="footer">Original camera footage controls the replay clock.</div></div>
 <div class="card"><div class="heading">02 · Surveyed patch, true-size road surface and observed tracked positions</div>
 <div class="viewport" id="view"><div id="loading" class="loader">Building the surveyed 3D road model…</div></div>
-<div class="footer">Only the selected road patch is measured. Car meshes and the camera FOV are approximate; background pixels may include cars from the reference frame.</div></div>
+<div class="footer">Observed mode replays tracked camera footpoints. Signal concept adds functional hypothetical traffic controls on the surveyed road patch; it is NOT a site-approved design or an accident prediction.</div></div>
 </div>
 <div class="status" id="stats">Camera-calibration measurements are estimates, not certified road survey or vehicle-speed enforcement data.</div>
 <script type="application/json" id="payload">__DATA__</script>
@@ -119,6 +119,89 @@ try{
     group.visible=false;scene.add(group);
     models.push({track,pts,group,lastAngle:null});
  }
+ // The proposed signal experiment uses the SAME surveyed road-plane geometry
+ // but independent modeled demand/time. It is never labeled real observation.
+ const simData=data.control_scenario||null;
+ const intervention=new T.Group();scene.add(intervention);
+ const laneCount=simData?.inputs?.lanes||2;
+ const guide=new T.MeshBasicMaterial({color:0xf8faf6,transparent:true,opacity:.85});
+ if(simData){
+   for(let boundary=1;boundary<laneCount;boundary++){
+     const marking=new T.Mesh(new T.BoxGeometry(.08,.04,metric.length_m*.82),guide);
+     marking.position.set(boundary*metric.width_m/laneCount,.06,metric.length_m/2);
+     intervention.add(marking);
+   }
+   // Stop line 10 metres upstream of the hypothetical crossing.
+   const stop=new T.Mesh(new T.BoxGeometry(metric.width_m*.94,.06,.23),guide);
+   stop.position.set(metric.width_m/2,.11,metric.length_m/2-10);
+   intervention.add(stop);
+   for(let shift=-1.6;shift<=1.6;shift+=.7){
+     const stripe=new T.Mesh(new T.BoxGeometry(metric.width_m*.9,.055,.36),guide);
+     stripe.position.set(metric.width_m/2,.12,metric.length_m/2+shift);
+     intervention.add(stripe);
+   }
+   const pole=new T.Mesh(new T.CylinderGeometry(.09,.11,4,10),
+     new T.MeshStandardMaterial({color:0x536474}));
+   pole.position.set(-.55,2,metric.length_m/2-9.6);intervention.add(pole);
+   const signal=new T.Mesh(new T.BoxGeometry(.48,1.4,.44),
+     new T.MeshStandardMaterial({color:0x243847}));
+   signal.position.set(-.55,4.35,metric.length_m/2-9.6);intervention.add(signal);
+ }
+ const simCars=new Map(),simPeople=new Map();
+ function createBody(id,kind){
+    const width=kind==="person"?.45:1.7;
+    const height=kind==="person"?1.7:1.4;
+    const length=kind==="person"?.45:4.3;
+    const group=new T.Group();
+    const hull=new T.Mesh(new T.BoxGeometry(width,height,length),
+      new T.MeshStandardMaterial({color:kind==="person"?0xd89d62:
+       [0x4b91c1,0xd68f7b,0x8fa8b0][id%3],roughness:.65}));
+    hull.position.y=height/2;group.add(hull);intervention.add(group);
+    return group;
+ }
+ function setScenarioFrame(frame){
+   if(!simData||!frame)return 0;
+   const visibleCars=new Set(),visiblePeople=new Set();
+   for(const [id,roadX,lane,v] of frame.cars){
+     // Preserve true metres, clipping the 140 m simulation to the surveyed
+     // segment instead of stretching all traffic into a 25 m patch.
+     const z=metric.length_m/2+roadX;
+     if(z<0||z>metric.length_m)continue;
+     let body=simCars.get(id);
+     if(!body){body=createBody(id,"car");simCars.set(id,body)}
+     body.position.set((lane+.5)*metric.width_m/laneCount,.06,z);
+     body.visible=true;visibleCars.add(id);
+   }
+   for(const [id,walkY,status] of frame.people){
+     if(status!=="crossing")continue;
+     let body=simPeople.get(id);
+     if(!body){body=createBody(id,"person");simPeople.set(id,body)}
+     body.position.set(metric.width_m/2+walkY,.06,metric.length_m/2);
+     body.visible=true;visiblePeople.add(id);
+   }
+   for(const [id,obj] of simCars)if(!visibleCars.has(id))obj.visible=false;
+   for(const [id,obj] of simPeople)if(!visiblePeople.has(id))obj.visible=false;
+   signalState(frame.phase);
+   return visibleCars.size;
+ }
+ let signalIndicator=null;
+ if(simData){
+   signalIndicator=new T.Mesh(new T.SphereGeometry(.18,12,8),
+     new T.MeshBasicMaterial({color:0x28c975}));
+   signalIndicator.position.set(-.55,4.45,metric.length_m/2-9.33);
+   intervention.add(signalIndicator);
+ }
+ function signalState(phase){
+   if(!signalIndicator)return;
+   const allowed=phase==="vehicle_green";
+   signalIndicator.material.color.setHex(allowed?0x29df67:phase==="vehicle_yellow"?0xf4be31:0xe8473d);
+ }
+ let simulatedClock=0;
+ const simFrames=simData?.managed?.frames||[];
+ document.getElementById("mode").disabled=!simData;
+ if(!simData)document.getElementById("mode").options[1].textContent=
+   "Signal concept requires a surveyed patch >= 24 m long and >= 5 m wide";
+ intervention.visible=false;
  function positionAt(points,seconds){
    if(seconds<points[0][0]||seconds>points[points.length-1][0])return null;
    let lo=0,hi=points.length-1;
@@ -131,14 +214,21 @@ try{
  }
  let time=0,playing=true,last=performance.now(),nativeVideo=!!video.getAttribute("src");
  function update(now){
-   if(nativeVideo)time=video.currentTime||0;
-   else if(playing)time+=(now-last)/1000;
+   const chosen=document.getElementById("mode").value;
+   const dt=Math.max(0,Math.min(.10,(now-last)/1000));
+   if(chosen==="signal"&&simData){
+     if(playing)simulatedClock+=dt;
+     if(simulatedClock>=simData.inputs.seconds)simulatedClock=0;
+   } else {
+     if(nativeVideo)time=video.currentTime||0;
+     else if(playing)time+=dt;
+     if(time>data.duration)time=0;
+   }
    last=now;
-   if(time>data.duration)time=0;
    let count=0;
    for(const m of models){
      const pos=positionAt(m.pts,time);
-     if(!pos){m.group.visible=false;continue}
+     if(!pos||chosen==="signal"){m.group.visible=false;continue}
      m.group.visible=true;count++;
      m.group.position.set(pos[0],.06,pos[1]);
      const old=positionAt(m.pts,Math.max(0,time-.35));
@@ -150,12 +240,22 @@ try{
        }
      }
    }
+   const scenario=chosen==="signal"&&simData;
+   intervention.visible=Boolean(scenario);
+   let extra="";
+   if(scenario){
+     const index=Math.min(simFrames.length-1,Math.floor(simulatedClock*2));
+     const frame=simFrames[Math.max(0,index)];
+     const n=setScenarioFrame(frame);
+     extra=" · HYPOTHETICAL "+(frame?.phase||"no phase").replaceAll("_"," ")+
+       " · "+n+" simulated vehicles on surveyed patch · independent "+simulatedClock.toFixed(1)+"s clock";
+   }
    controls.update();renderer.render(scene,camera);
    document.getElementById("stats").textContent=
      "Surveyed flat patch "+metric.width_m.toFixed(1)+" m × "+metric.length_m.toFixed(1)+
      " m · Camera fit RMSE "+metric.reprojection_rmse_px.toFixed(1)+
-     " px · "+count+" visible tracked meshes · "+
-     time.toFixed(1)+"s · Measured: annotated road corners + timestamps; inferred: object shape and camera FOV.";
+     " px · "+(scenario?"Concept only":count+" observed tracked meshes at "+time.toFixed(1)+"s")+
+     extra+" · Object meshes/FOV and interventions are estimates, NOT surveyed design.";
    requestAnimationFrame(update);
  }
  const resize=()=>{
@@ -172,11 +272,16 @@ try{
    controls.target.copy(center);controls.update();
  };
  document.getElementById("pause").onclick=()=>{
+   if(document.getElementById("mode").value==="signal"){playing=!playing;return}
    if(nativeVideo){if(video.paused)video.play().catch(()=>{});else video.pause()}
    else playing=!playing;
  };
+ document.getElementById("mode").onchange=e=>{
+   playing=true;simulatedClock=0;time=0;last=performance.now();
+   if(e.target.value==="signal"&&nativeVideo)video.pause();
+ };
  document.getElementById("reset").onclick=()=>{
-   time=0;if(nativeVideo)video.currentTime=0;last=performance.now()
+   time=0;simulatedClock=0;if(nativeVideo)video.currentTime=0;last=performance.now()
  };
  document.getElementById("loading").hidden=true;
  requestAnimationFrame(update);
