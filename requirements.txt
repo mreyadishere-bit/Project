@@ -6,3 +6,4 @@ pandas>=2.0,<3
 requests>=2.31,<3
 fastapi>=0.110,<1
 uvicorn>=0.29,<1
+yt-dlp>=2025.1.15,<2028  # public YouTube live extraction (availability not guaranteed)
