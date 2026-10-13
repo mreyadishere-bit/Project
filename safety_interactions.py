@@ -70,6 +70,9 @@ def find_interactions(objects_file, frame_width, frame_height, *,
                 image_location=(round(episode["px"], 4),
                                 round(episode["py"], 4)),
             ))
+            if len(completed)>max(40,3*max_events):
+                completed.sort(key=lambda e:(-e.frame_count,e.minimum_image_distance))
+                del completed[max_events:]
 
     def process_frame(rows):
         if not rows:
