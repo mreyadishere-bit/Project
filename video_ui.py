@@ -354,7 +354,25 @@ def video_stage(snap, job):
                 st.caption(f"Source: {snap['label']}")
                 st.caption(f"Compute: {snap['device']}")
                 st.caption(f"Analyzed frames: {snap['analyzed_frames']:,}")
-                st.caption(f"Processing throughput: {snap['processing_fps']:.1f} fps")
+                st.caption(f"Actual analysis throughput: {snap['processing_fps']:.1f} frames/s (wall-clock)")
+                if snap.get("effective_sample_fps"):
+                    st.caption(
+                        f"Source: {snap.get('source_video_fps',0):.1f} FPS · "
+                        f"Sampling: {snap['effective_sample_fps']:.1f} frames/video-second · "
+                        f"YOLO inference: {snap.get('inference_ms_avg',0):.0f} ms/frame"
+                    )
+                if snap["analyzed_frames"] >= 8:
+                    empty=snap.get("empty_detection_frames",0)
+                    st.caption(
+                        f"Detection coverage: {snap['analyzed_frames']-empty:,}/{snap['analyzed_frames']:,} "
+                        "sampled frames with ≥1 tracked detection"
+                    )
+                    if empty >= .6 * snap["analyzed_frames"]:
+                        st.warning(
+                            "Most sampled frames produced no tracked objects, despite possible visible traffic. "
+                            "Try lowering confidence, selecting a detail-oriented preset, or adjusting the camera ROI. "
+                            "Results and counted vehicles may be substantial undercounts."
+                        )
                 if snap["duration_seconds"] > 0:
                     fraction = min(1., snap["frames_read"]/snap["total_frames"]) if snap["total_frames"] else min(1.,snap["video_second"]/snap["duration_seconds"])
                     st.progress(fraction, text=f"{fraction:.0%} of video · {snap['video_second']/60:.1f}/{snap['duration_seconds']/60:.1f} min")
