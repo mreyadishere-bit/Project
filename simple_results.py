@@ -163,17 +163,21 @@ def show_results(job,snap):
                 st.error("Could not evaluate these annotations: "+str(exc))
 
     with st.expander("Download data & inspect measurement limits"):
+        surveyed=st.session_state.get("surveyed_road_"+job.id)
         report={"source":snap["label"],"status":snap["status"],
                 "crossings":crossings,"evidence":evidence,
                 "recommendations":story["recommendations"],
                 "review_needed":"Single-camera AI can miss vehicles and cannot establish metric speed or 3D dimensions without calibration.",
                 "context":story["context"],"kinematic_evidence":story["measurements"],
-                "interaction_review_candidates":interaction_events}
+                "interaction_review_candidates":interaction_events,
+                "surveyed_ground_measurements": surveyed["tracks_report"] if surveyed else None,
+                "surveyed_ground_geometry": surveyed["calibration"] if surveyed else None}
         from road_report_pdf import build_road_pdf
         try:
             pdf_bytes=build_road_pdf(
                 snap,story,interaction_events,
-                st.session_state.get("control_"+job.id+"_results")
+                st.session_state.get("control_"+job.id+"_results"),
+                surveyed
             )
             st.download_button("Download professional road review (PDF)",pdf_bytes,
                                file_name="smart-road-evidence-review.pdf",
