@@ -5,7 +5,7 @@ import types
 import unittest
 from unittest.mock import patch
 
-from live_sources import canonical_youtube_live_url, resolve_youtube_live
+from live_sources import canonical_youtube_live_url, resolve_youtube_live, choose_frame_stream
 
 
 class YouTubeLinkTests(unittest.TestCase):
@@ -59,6 +59,50 @@ class YouTubeLinkTests(unittest.TestCase):
         with patch.dict(sys.modules, {"yt_dlp": module}):
             with self.assertRaisesRegex(RuntimeError, "blocked automated video access"):
                 resolve_youtube_live("https://www.youtube.com/watch?v=FWvIPfxK5Jo")
+
+    def test_selects_hls_video_not_audio_or_dash_fragments(self):
+        info = {"formats": [
+            {"url": "https://media.example/audio", "protocol": "m3u8_native",
+             "vcodec": "none", "height": 0},
+            {"url": "https://media.example/dash", "protocol": "http_dash_segments",
+             "vcodec": "avc1", "height": 480, "fragments": [{"url": "/chunk"}]},
+            {"url": "https://media.example/high.m3u8", "protocol": "m3u8_native",
+             "vcodec": "avc1", "height": 1080},
+            {"url": "https://media.example/low.m3u8", "protocol": "m3u8_native",
+             "vcodec": "avc1", "height": 480},
+        ]}
+        self.assertEqual(choose_frame_stream(info), "https://media.example/low.m3u8")
+
+    def test_can_select_progressive_video_if_no_hls(self):
+        info = {"formats": [
+            {"url": "https://media.example/video.mp4", "protocol": "https",
+             "vcodec": "avc1", "height": 720}
+        ]}
+        self.assertEqual(choose_frame_stream(info), "https://media.example/video.mp4")
+
+    def test_rejects_zero_available_video_formats(self):
+        for info in ({"formats": []}, {"formats": [
+            {"url": "https://media.example/a", "protocol": "m3u8", "vcodec": "none"}
+        ]}):
+            with self.subTest(info=info), self.assertRaisesRegex(RuntimeError, "did not provide"):
+                choose_frame_stream(info)
+
+    def test_live_with_empty_formats_fails_with_precise_message(self):
+        module = types.ModuleType("yt_dlp")
+        class FakeYDL:
+            def __init__(self, opts):
+                self.opts = opts
+                self.__class__.last_opts = opts
+            def __enter__(self): return self
+            def __exit__(self, *args): return None
+            def extract_info(self, url, download=False):
+                return {"id": "FWvIPfxK5Jo", "formats": [], "live_status": None}
+        module.YoutubeDL = FakeYDL
+        with patch.dict(sys.modules, {"yt_dlp": module}):
+            with self.assertRaisesRegex(RuntimeError, "did not provide a usable video stream"):
+                resolve_youtube_live("https://www.youtube.com/watch?v=FWvIPfxK5Jo")
+        self.assertTrue(FakeYDL.last_opts["ignore_no_formats_error"])
+        self.assertNotIn("format", FakeYDL.last_opts)
 
     def test_extracts_live_https_stream(self):
         module = types.ModuleType("yt_dlp")
