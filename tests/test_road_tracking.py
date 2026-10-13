@@ -43,9 +43,11 @@ class TestRoadTracker(unittest.TestCase):
     def test_crossing_same_class_traffic_uses_motion_global_association(self):
         tracker=RoadTracker(max_age=4)
         records=[]
-        for t in range(7):
+        for t in range(9):
             a_x=62+20*t
-            b_x=302-20*t
+            # Avoid an information-theoretically unidentifiable frame in
+            # which both same-class boxes have *exactly* identical coordinates.
+            b_x=307-20*t
             detections=[
                 {"bounds":(a_x,140,a_x+42,178),"cls":"car","confidence":.91},
                 {"bounds":(b_x,140,b_x+42,178),"cls":"car","confidence":.92}
