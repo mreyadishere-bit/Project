@@ -33,8 +33,11 @@ button:hover{background:#e9f2ff}
 .panelhead span{color:#7a90a6;font-size:10px}
 .viewport{aspect-ratio:16/9;position:relative;overflow:hidden;background:#d2e3eb}
 .viewport video,.viewport canvas,.viewport .matched-background{height:100%;width:100%;display:block;object-fit:contain}
+.viewport #liveFrame{position:absolute;inset:0;z-index:1;pointer-events:none}
+.viewport #visualOverlays{position:absolute;inset:0;z-index:3;pointer-events:none}
+.viewport .scenario-chip{position:absolute;top:12px;left:12px;z-index:5;padding:7px 10px;border-radius:9px;background:rgba(19,36,51,.84);color:white;font-size:11px;pointer-events:none;max-width:85%}
 .viewport .matched-background{position:absolute;inset:0;z-index:0;pointer-events:none}
-.viewport canvas{position:absolute;inset:0;z-index:1;cursor:grab}
+.viewport canvas{position:absolute;inset:0;z-index:2;cursor:grab}
 .viewport canvas{cursor:grab}
 .panelnote{padding:11px 15px;border-top:1px solid #e8edf3;color:#8290a2;min-height:54px;line-height:1.5;font-size:11px}
 .model-loading{position:absolute;inset:0;z-index:7;display:flex;flex-direction:column;gap:11px;align-items:center;justify-content:center;background:#e9f1f7;color:#405b77;font-size:13px;text-align:center;padding:24px;transition:opacity .25s ease}
@@ -50,7 +53,12 @@ button:hover{background:#e9f2ff}
 .settings label{font-size:11px;color:#627a90}
 .settings input{accent-color:#307fe0}
 .settings input[type=range]{width:135px}
+.scenario-explanation{background:#fff;border:1px solid #dbe7f2;border-radius:15px;padding:15px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;margin-top:12px;font-size:12px;line-height:1.55}
+.scenario-explanation>div{display:flex;flex-direction:column;gap:5px}
+.scenario-explanation strong{font-weight:600}
+.scenario-label{font-size:10px;color:#54718c;letter-spacing:.03em;font-weight:700}
 .hint{padding:11px 2px;font-size:11px;color:#7c8da3;line-height:1.6}
+@media(max-width:680px){.scenario-explanation{grid-template-columns:1fr}}
 .warning{font-size:11px;color:#886d2e;background:#fff8e7;padding:11px 13px;border-radius:12px;line-height:1.6;margin-top:6px}
 .error{display:none;padding:14px;color:#b54737;background:#fff1ee;border-radius:12px}
 @media(max-width:710px){.shell{grid-template-columns:repeat(2,minmax(310px,1fr));overflow-x:auto;scroll-snap-type:x mandatory}.panel{scroll-snap-align:start}.viewport{aspect-ratio:16/9}}
@@ -59,7 +67,7 @@ button:hover{background:#e9f2ff}
 </head><body>
 <div class="top"><div><div class="title">Original video vs improved 3D</div><div class="sub">One source-video timeline · Matched ground-contact pixels in Source View · Editable what-if scene</div></div>
 <div class="tools"><button id="play" aria-label="Play or pause original footage">Play</button><button id="restart">Restart</button>
-<select id="camera" aria-label="Simulation camera"><option value="source">Source view</option><option value="orbit">Orbit 3D</option><option value="top">Top view</option></select>
+<select id="camera" aria-label="Viewing mode"><option value="source">Video-matched view</option><option value="orbit">Explore low-poly 3D</option><option value="top">3D top view</option></select>
 <strong id="clock">00:00</strong></div></div>
 <div class="shell">
   <section class="panel">
@@ -75,20 +83,24 @@ button:hover{background:#e9f2ff}
   </section>
   <section class="panel">
     <div class="panelhead"><strong>02 · Camera-matched modified 3D</strong><span id="scenarioName">Scenario</span></div>
-    <div class="viewport" id="simulation"><img class="matched-background" id="matchedBackground" alt="Background extracted from the actual road video" />
+    <div class="viewport" id="simulation"><img class="matched-background" id="matchedBackground" alt="Source video reference" />
+<canvas id="liveFrame" aria-label="The identical original video frame, with a clearly identified visual experiment"></canvas>
+<canvas id="visualOverlays" aria-hidden="true"></canvas>
+<span class="scenario-chip" id="scenarioChip">Preparing video-based comparison…</span>
 <div class="model-loading" id="modelLoading" role="status" aria-live="polite"><div class="spinner" aria-hidden="true"></div><strong id="loadingStage">Building your 3D road…</strong><span class="loading-sub">Loading the road image, vehicles and camera view. Please wait.</span></div></div>
-    <div class="panelnote">Source View: actual road image with 3D tracked vehicles and visual interventions. Orbit / Top: approximate 3D geometry.</div>
+    <div class="panelnote">Video-matched mode: same moving real footage, plus the selected visual explanation. 3D orbit and top are separate, illustrative geometry views.</div>
   </section>
 </div>
 <div class="playback"><label for="seek">Timeline</label><input id="seek" type="range" min="0" max="1000" value="0">
 <span id="timeText">00:00 / 00:00</span></div>
 <div class="settings">
- <label for="intervention">Proposed change</label><select id="intervention"></select>
- <label for="ratio">Vehicle movement ratio</label><input id="ratio" type="range" min="50" max="125" step="5" value="100">
+ <label for="intervention">Explore an observation or concept</label><select id="intervention"></select>
+ <label for="ratio">3D what-if movement (not physical speed)</label><input id="ratio" type="range" min="50" max="125" step="5" value="100">
  <strong id="ratioText">100%</strong><button id="reset">Reset scenario</button>
 </div>
+<div class="scenario-explanation" id="scenarioExplanation"><div><span class="scenario-label">WHAT WE OBSERVED</span><strong id="whatObserved">Reading video evidence…</strong></div><div><span class="scenario-label">WHAT CHANGES IN THE PREVIEW</span><strong id="whatChanges">Preparing comparison…</strong></div><div><span class="scenario-label">HOW IT COULD HELP</span><span id="whyUseful">We won't invent a safety improvement.</span></div><div><span class="scenario-label">NEEDS REAL-WORLD VALIDATION</span><span id="verifyFirst">Survey the site before construction.</span></div></div>
 <div class="hint" id="comparisonDetail"></div>
-<div class="warning">Source View aligns observed ground-contact IMAGE coordinates using a perspective camera and an assumed flat road plane. This does not recover real depth, road widths, occluded geometry, or calibrated physical speeds. An intervention is an illustrative counterfactual, not a demonstrated safety improvement.</div>
+<div class="warning">The right-hand video view is the SAME recorded video with visual overlays. Improved exposure is a camera-preview experiment, not installed lighting. 3D inspection uses approximate meshes, not a surveyed digital twin. No accident reduction, speed improvement, or physical separation has been measured.</div>
 <div class="error" id="error"></div>
 <script id="sceneData" type="application/json">__SCENE__</script>
 <script type="module">
