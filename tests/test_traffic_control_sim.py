@@ -68,6 +68,16 @@ class SignalConceptTests(unittest.TestCase):
                             self.assertFalse(in_crossing,
                                 f"Vehicle in crossing during WALK at t={frame['t']}")
 
+    def test_lane_layout_changes_actual_agent_lane_assignments(self):
+        for lane_count in (1,2,3):
+            with self.subTest(lanes=lane_count):
+                scenario=ControlInputs(lanes=lane_count,seed=41,seconds=180,
+                                       vehicles_per_hour=980,pedestrians_per_hour=180)
+                result=simulate(scenario)
+                all_lanes={c[2] for frame in result["managed"]["frames"] for c in frame["cars"]}
+                self.assertTrue(all(0<=lane<lane_count for lane in all_lanes))
+                self.assertEqual(len(all_lanes),lane_count)
+
     def test_rejects_unsupported_parameters(self):
         with self.assertRaises(ValueError):
             simulate(ControlInputs(speed_kmh=200))
