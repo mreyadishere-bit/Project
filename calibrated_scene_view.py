@@ -72,16 +72,16 @@ try{
  const camera=new T.PerspectiveCamera(2*Math.atan(imageAspect*Math.tan(metric.fov_deg*Math.PI/360))*180/Math.PI,1,.02,1000);
  const R=metric.rotation_cv,t=metric.translation_cv;
  const basis=new T.Matrix4().set(
-  R[0][0],R[0][2],R[0][1], t[0],
-  -R[1][0],-R[1][2],-R[1][1],-t[1],
-  -R[2][0],-R[2][2],-R[2][1],-t[2],
+  R[0][0],R[0][2],-R[0][1], t[0],
+  -R[1][0],-R[1][2],R[1][1],-t[1],
+  -R[2][0],-R[2][2],R[2][1],-t[2],
   0,0,0,1
  );
  basis.invert().decompose(camera.position,camera.quaternion,new T.Vector3());
  const homePosition=camera.position.clone(),homeQuaternion=camera.quaternion.clone();
  const controls=new OrbitControls(camera,renderer.domElement);
  controls.enableDamping=true;
- const center=new T.Vector3(metric.width_m/2,0,metric.length_m/2);
+ const center=new T.Vector3(metric.width_m/2,0,-metric.length_m/2);
  // Preserve calibrated camera orientation in SOURCE mode. Re-aiming Orbit
  // controls at the road centre would destroy source-image reprojection.
  const sourceForward=new T.Vector3(0,0,-1).applyQuaternion(homeQuaternion);
@@ -92,11 +92,11 @@ try{
  texture.colorSpace=T.SRGBColorSpace;
  const road=new T.Mesh(new T.PlaneGeometry(metric.width_m,metric.length_m),
    new T.MeshStandardMaterial({map:texture,side:T.DoubleSide,roughness:.96}));
- road.rotation.x=-Math.PI/2;road.position.set(metric.width_m/2,0,metric.length_m/2);
+ road.rotation.x=Math.PI/2;road.position.set(metric.width_m/2,0,-metric.length_m/2);
  scene.add(road);
  const border=new T.LineLoop(new T.BufferGeometry().setFromPoints([
    new T.Vector3(0,.05,0),new T.Vector3(metric.width_m,.05,0),
-   new T.Vector3(metric.width_m,.05,metric.length_m),new T.Vector3(0,.05,metric.length_m)
+   new T.Vector3(metric.width_m,.05,-metric.length_m),new T.Vector3(0,.05,-metric.length_m)
  ]),new T.LineBasicMaterial({color:0x318ce0}));scene.add(border);
  const colors={car:0x3c80c5,truck:0x98abb7,bus:0xe2bd78,motorcycle:0x688d9c,person:0xe1a174,bicycle:0x669a7e};
  const modelTypes={
@@ -128,24 +128,24 @@ try{
  if(simData){
    for(let boundary=1;boundary<laneCount;boundary++){
      const marking=new T.Mesh(new T.BoxGeometry(.08,.04,metric.length_m*.82),guide);
-     marking.position.set(boundary*metric.width_m/laneCount,.06,metric.length_m/2);
+     marking.position.set(boundary*metric.width_m/laneCount,.06,-metric.length_m/2);
      intervention.add(marking);
    }
    // Stop line 10 metres upstream of the hypothetical crossing.
    const stop=new T.Mesh(new T.BoxGeometry(metric.width_m*.94,.06,.23),guide);
-   stop.position.set(metric.width_m/2,.11,metric.length_m/2-10);
+   stop.position.set(metric.width_m/2,.11,-metric.length_m/2+10);
    intervention.add(stop);
    for(let shift=-1.6;shift<=1.6;shift+=.7){
      const stripe=new T.Mesh(new T.BoxGeometry(metric.width_m*.9,.055,.36),guide);
-     stripe.position.set(metric.width_m/2,.12,metric.length_m/2+shift);
+     stripe.position.set(metric.width_m/2,.12,-metric.length_m/2+shift);
      intervention.add(stripe);
    }
    const pole=new T.Mesh(new T.CylinderGeometry(.09,.11,4,10),
      new T.MeshStandardMaterial({color:0x536474}));
-   pole.position.set(-.55,2,metric.length_m/2-9.6);intervention.add(pole);
+   pole.position.set(-.55,2,-metric.length_m/2+9.6);intervention.add(pole);
    const signal=new T.Mesh(new T.BoxGeometry(.48,1.4,.44),
      new T.MeshStandardMaterial({color:0x243847}));
-   signal.position.set(-.55,4.35,metric.length_m/2-9.6);intervention.add(signal);
+   signal.position.set(-.55,4.35,-metric.length_m/2+9.6);intervention.add(signal);
  }
  const simCars=new Map(),simPeople=new Map();
  function createBody(id,kind){
@@ -165,8 +165,8 @@ try{
    for(const [id,roadX,lane,v] of frame.cars){
      // Preserve true metres, clipping the 140 m simulation to the surveyed
      // segment instead of stretching all traffic into a 25 m patch.
-     const z=metric.length_m/2+roadX;
-     if(z<0||z>metric.length_m)continue;
+     const z=-metric.length_m/2-roadX;
+     if(z>0||z< -metric.length_m)continue;
      let body=simCars.get(id);
      if(!body){body=createBody(id,"car");simCars.set(id,body)}
      body.position.set((lane+.5)*metric.width_m/laneCount,.06,z);
@@ -176,7 +176,7 @@ try{
      if(status!=="crossing")continue;
      let body=simPeople.get(id);
      if(!body){body=createBody(id,"person");simPeople.set(id,body)}
-     body.position.set(metric.width_m/2+walkY,.06,metric.length_m/2);
+     body.position.set(metric.width_m/2+walkY,.06,-metric.length_m/2);
      body.visible=true;visiblePeople.add(id);
    }
    for(const [id,obj] of simCars)if(!visibleCars.has(id))obj.visible=false;
@@ -188,7 +188,7 @@ try{
  if(simData){
    signalIndicator=new T.Mesh(new T.SphereGeometry(.18,12,8),
      new T.MeshBasicMaterial({color:0x28c975}));
-   signalIndicator.position.set(-.55,4.45,metric.length_m/2-9.33);
+   signalIndicator.position.set(-.55,4.45,-metric.length_m/2+9.33);
    intervention.add(signalIndicator);
  }
  function signalState(phase){
@@ -230,10 +230,10 @@ try{
      const pos=positionAt(m.pts,time);
      if(!pos||chosen==="signal"){m.group.visible=false;continue}
      m.group.visible=true;count++;
-     m.group.position.set(pos[0],.06,pos[1]);
+     m.group.position.set(pos[0],.06,-pos[1]);
      const old=positionAt(m.pts,Math.max(0,time-.35));
      if(old){
-       const dx=pos[0]-old[0],dz=pos[1]-old[1];
+       const dx=pos[0]-old[0],dz=-(pos[1]-old[1]);
        if(Math.hypot(dx,dz)>.04){
          const angle=Math.atan2(dx,dz);
          m.group.rotation.y=angle;
@@ -258,17 +258,47 @@ try{
      extra+" · Object meshes/FOV and interventions are estimates, NOT surveyed design.";
    requestAnimationFrame(update);
  }
+ // Only a PROPER right-handed rigid transform can be decomposed into
+ // Three.js camera quaternions. Use (x,height,-road_distance) in world.
+ // Match ORIGINAL aspect in a centered viewport, not the responsive card ratio.
+ const projectionNote=document.createElement("div");
+ projectionNote.style.cssText="position:absolute;right:10px;bottom:8px;padding:5px 8px;border-radius:6px;background:#183750d9;color:white;font-size:10px;pointer-events:none;z-index:3";
+ projectionNote.id="projectionStatus";
+ view.appendChild(projectionNote);
+ const corners3D=[
+    new T.Vector3(0,0,0),new T.Vector3(metric.width_m,0,0),
+    new T.Vector3(metric.width_m,0,-metric.length_m),
+    new T.Vector3(0,0,-metric.length_m)
+ ];
+ const validateProjection=()=>{
+   const reproject=corners3D.map(p=>p.clone().project(camera));
+   const pixels=reproject.map(v=>[(v.x+1)*data.width/2,(1-v.y)*data.height/2]);
+   const squared=pixels.map((p,i)=>
+      Math.pow(p[0]-data.calibration.points[i][0]*data.width,2)+
+      Math.pow(p[1]-data.calibration.points[i][1]*data.height,2));
+   const rmse=Math.sqrt(squared.reduce((a,b)=>a+b,0)/squared.length);
+   projectionNote.textContent="Three.js source reprojection: "+rmse.toFixed(1)+" px RMSE";
+   projectionNote.style.background=rmse>18?"#96362ed9":"#183750d9";
+   return rmse;
+ };
  const resize=()=>{
    const w=Math.max(1,view.clientWidth),h=Math.max(1,view.clientHeight);
-   renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()
+   renderer.setSize(w,h,false);
+   const ratio=data.width/data.height;
+   const vwidth=Math.min(w,h*ratio),vheight=vwidth/ratio;
+   renderer.setViewport((w-vwidth)/2,(h-vheight)/2,vwidth,vheight);
+   camera.aspect=ratio;camera.updateProjectionMatrix();
+   // Reprojection is only checked in source orientation (not free orbit).
+   if(camera.position.distanceTo(homePosition)<.002)validateProjection();
  };
  new ResizeObserver(resize).observe(view);resize();
  document.getElementById("sourceview").onclick=()=>{
    camera.position.copy(homePosition);camera.quaternion.copy(homeQuaternion);
    controls.target.copy(sourceTarget);controls.update();
+   validateProjection();
  };
  document.getElementById("top").onclick=()=>{
-   camera.position.set(metric.width_m/2,Math.max(28,metric.length_m*1.15),metric.length_m/2+.01);
+   camera.position.set(metric.width_m/2,Math.max(28,metric.length_m*1.15),-metric.length_m/2+.01);
    controls.target.copy(center);controls.update();
  };
  document.getElementById("pause").onclick=()=>{
