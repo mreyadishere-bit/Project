@@ -329,6 +329,28 @@ try {
     addMesh(new THREE.CylinderGeometry(.08,.11,7,7),lampMat,foot.x,3.5,foot.z);
     addMesh(new THREE.BoxGeometry(2.3,.12,.17),lampMat,foot.x+1,6.95,foot.z);
  }
+ // Without a surveyed road type do NOT invent a divided highway,
+ // tree line, median, guardrails or lane count for an urban camera.
+ // Inspect a simple flat, source-photo projected surface instead.
+ if(data.roadContext!=="highway_hint"){
+    environment.clear();
+    const corners=[
+      imageToGround(.03,.41),imageToGround(.97,.41),
+      imageToGround(.03,.98),imageToGround(.97,.98)
+    ];
+    if(corners.every(Boolean)){
+      const positions=[];
+      corners.forEach(p=>positions.push(p.x,.015,p.z));
+      const geom=new THREE.BufferGeometry();
+      geom.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
+      geom.setAttribute("uv",new THREE.Float32BufferAttribute([
+        .03,.59,.97,.59,.03,.02,.97,.02
+      ],2));
+      geom.setIndex([0,2,1,1,2,3]);geom.computeVertexNormals();
+      const surface=new THREE.Mesh(geom,photoRoad);
+      surface.receiveShadow=true;environment.add(surface);
+    }
+ }
  function vehicleModel(type,color){
     const g=new THREE.Group(),heavy=(type==="truck"||type==="bus"),bike=(type==="motorcycle"||type==="bicycle");
     const length=heavy?8.4:bike?2.2:4.4,width=heavy?2.5:bike?.8:1.95,bodyHeight=heavy?2.7:bike?.7:1.4;
@@ -522,7 +544,7 @@ try {
  }
  function applyIntervention(){
     const chosen=opts.find(x=>x.id===selector.value)||opts[0];
-    enhanced.visible=chosen.id==="markings";
+    enhanced.visible=chosen.id==="markings" && data.roadContext==="highway_hint";
     lighting.visible=chosen.id==="visibility";
     signGroup.visible=false;
     document.getElementById("scenarioName").textContent=chosen.title;
@@ -706,6 +728,7 @@ def render_reconstruction(job, snapshot):
         "originalDimensions": [scene["width"],scene["height"]],
         "backgroundImage": background_uri,
         "backgroundOrigin": background_origin,
+        "roadContext": report["context"]["kind"],
     }
     html = VIEWER.replace("__VIDEO_URL__",escape(video_uri or "",quote=True)).replace(
         "__SCENE__",json.dumps(data,ensure_ascii=False,separators=(",",":")).replace("</","<\\/"))
