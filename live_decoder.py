@@ -50,11 +50,11 @@ class FFmpegLiveCapture:
               f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2")
         args = [ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error"]
         if parsed.scheme == "https":
-            args.extend([
-                "-rw_timeout", "12000000",
-                "-user_agent", "Mozilla/5.0 (compatible; SmartRoadResearch/1.0)",
-                "-referer", "https://www.youtube.com/",
-            ])
+            # Public agency HLS feeds should not be sent YouTube-specific headers.
+            args.extend(["-rw_timeout", "12000000"])
+            if parsed.hostname not in {"wzmedia.dot.ca.gov", "58cc2dce193dd.streamlock.net"}:
+                args.extend(["-user_agent", "Mozilla/5.0 (compatible; SmartRoadResearch/1.0)"])
+
         args.extend([
             "-i", url, "-map", "0:v:0", "-an", "-sn", "-dn",
             "-vf", vf, "-pix_fmt", "bgr24", "-f", "rawvideo", "pipe:1",
