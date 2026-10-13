@@ -132,6 +132,7 @@ class VideoSettings:
     camera_fov_deg: float = 70.0  # needs real intrinsics for accurate pose
     count_line_fraction: float = .50
     tracker: str = "traffic_botsort.yaml"
+    use_openvino: bool = False
 
 
 class VideoJob:
@@ -270,6 +271,7 @@ class VideoJob:
                 "effective_sample_fps": self.effective_sample_fps,
                 "requested_sample_fps": self.settings.analysis_fps,
                 "model_name": self.settings.model_name,
+                "inference_backend": getattr(self, "inference_backend", "PyTorch"),
                 "scene": dict(self.scene), "recent_events": list(self.recent_events),
                 "total_events": self.total_events, "mean_apparent_speed": self.mean_apparent_speed,
                 "mean_calibrated_speed": self.mean_calibrated_speed,
@@ -301,7 +303,7 @@ class VideoJob:
                 with self._lock:
                     self.label = broadcast_title
             # Load model on the worker thread to avoid freezing UI.
-            from ultralytics import YOLO
+            from model_runtime import load_detector
             import torch
             device = "0" if torch.cuda.is_available() else "cpu"
             if device == "cpu" and hasattr(torch, "set_num_threads"):
@@ -310,7 +312,10 @@ class VideoJob:
             with self._lock:
                 self.device = "GPU (CUDA)" if device == "0" else "CPU"
                 self.status = "loading model"
-            model = YOLO(self.settings.model_name)
+            model, self.inference_backend = load_detector(
+                self.settings.model_name,self.settings.image_size,
+                use_openvino=bool(self.settings.use_openvino and device=="cpu")
+            )
             if self.source_kind in {"youtube", "public_live"}:
                 from live_decoder import FFmpegLiveCapture
                 cap = FFmpegLiveCapture(capture_source, fps=min(5, self.settings.analysis_fps))
