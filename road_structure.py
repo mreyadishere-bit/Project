@@ -29,7 +29,7 @@ def suggest_perspective(image_bgr, max_lines=36):
     found=cv2.HoughLinesP(edges,rho=1,theta=np.pi/180,threshold=max(30,int(w*.05)),
                           minLineLength=minimum,maxLineGap=max(8,int(w*.027)))
     lines=[]
-    for seg in ([] if found is None else found[:,0].tolist()):
+    for seg in ([] if found is None else found.reshape(-1,4).tolist()):
         x1,y1,x2,y2=map(int,seg)
         if hypot(x2-x1,y2-y1)<minimum:
             continue
