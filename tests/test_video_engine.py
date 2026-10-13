@@ -94,6 +94,10 @@ class VideoTests(unittest.TestCase):
                 self.assertGreater(snap["video_second"], 60)
                 self.assertGreater(snap["analyzed_frames"], 60)
                 self.assertEqual(snap["unique_tracks"], 1)
+                self.assertIsNotNone(snap["best_preview_jpeg"])
+                self.assertGreater(snap["best_detection_count"], 0)
+                self.assertEqual(snap["detected_class_totals"]["car"], snap["analyzed_frames"])
+                self.assertEqual(snap["detected_frames"], snap["analyzed_frames"])
                 with job.summary_file.open(encoding="utf-8-sig", newline="") as src:
                     self.assertGreater(len(list(csv.DictReader(src))), 60)
                 with job.objects_file.open(encoding="utf-8-sig", newline="") as src:
