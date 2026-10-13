@@ -34,6 +34,51 @@ def canonical_youtube_live_url(raw: str) -> str:
     return f"https://www.youtube.com/watch?v={video_id}"
 
 
+
+def choose_frame_stream(info: dict) -> str:
+    """Select an HTTPS video stream that OpenCV/FFmpeg can plausibly decode.
+
+    Prefer HLS playlists, then direct nonfragmented video. This is only
+    a transport selection, NOT a way to bypass access restrictions.
+    """
+    formats = info.get("formats") or []
+    candidates = []
+    for entry in formats:
+        address = entry.get("url")
+        if (not isinstance(address, str) or not address.startswith("https://")
+                or entry.get("vcodec") in (None, "none")
+                or entry.get("has_drm") or entry.get("drm_families")):
+            continue
+        protocol = entry.get("protocol") or ""
+        if protocol in ("m3u8", "m3u8_native"):
+            priority = 0
+        elif protocol in ("https", "http") and not entry.get("fragments"):
+            priority = 1
+        else:
+            # DASH fragment playlists and audio-only media are not playable
+            # through a simple cv2.VideoCapture(url) call.
+            continue
+        height = entry.get("height")
+        try:
+            height = int(height or 0)
+        except (TypeError, ValueError):
+            height = 0
+        # Favor lower decode costs around 480p, rather than massive live video.
+        candidates.append((priority, abs(height - 480) if height else 10_000, address))
+    if candidates:
+        return min(candidates)[2]
+    direct = info.get("url")
+    if isinstance(direct, str) and direct.startswith("https://") and not info.get("requested_formats"):
+        return direct
+    raise RuntimeError(
+        "YouTube did not provide a usable video stream for this server "
+        "(no compatible HLS or direct HTTPS video formats). "
+        "This is a source-access limitation, not an AI detection failure. "
+        "Try a public camera feed that provides an authorized HLS/RTSP stream "
+        "or upload permitted footage."
+    )
+
+
 def resolve_youtube_live(raw_url: str) -> tuple[str, str]:
     """Resolve a public live video. Requires yt-dlp and network access.
 
@@ -50,7 +95,7 @@ def resolve_youtube_live(raw_url: str) -> tuple[str, str]:
         "quiet": True, "no_warnings": True, "noplaylist": True,
         "skip_download": True, "socket_timeout": 15,
         "retries": 1, "extractor_retries": 1,
-        "format": "best[height<=720]/best",
+        "ignore_no_formats_error": True,
         "ignoreerrors": False,
     }
     try:
@@ -72,12 +117,14 @@ def resolve_youtube_live(raw_url: str) -> tuple[str, str]:
             "Try another authorized public live source or an uploaded video."
         ) from exc
     if not isinstance(info, dict):
-        raise RuntimeError("YouTube did not provide playable metadata.")
-    if info.get("is_live") is not True and info.get("live_status") != "is_live":
+        raise RuntimeError("YouTube did not provide usable video metadata.")
+    known_status = info.get("live_status")
+    if known_status in {"not_live", "was_live", "post_live", "is_upcoming"}:
         raise ValueError("This YouTube video is not currently live. Use video upload for recordings.")
-    stream_url = info.get("url")
-    if not isinstance(stream_url, str) or not stream_url.startswith("https://"):
-        # Never forward arbitrary content, and never expose the media URL to the UI.
-        raise RuntimeError("No supported HTTPS video stream was returned for this live broadcast.")
+    # Check usable media before claiming a live status; metadata can be empty
+    # on a restricted server, so is_live may be unknown even for live feeds.
+    stream_url = choose_frame_stream(info)
+    if info.get("is_live") is not True and known_status != "is_live":
+        raise ValueError("Cannot confirm this is an active live broadcast from this server.")
     title = str(info.get("title") or "YouTube live road camera")[:120]
     return stream_url, title
