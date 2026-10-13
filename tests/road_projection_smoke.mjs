@@ -52,4 +52,20 @@ assert.ok(near.distanceTo(far)>20,
           "Video depth must produce a substantial 3D road surface (not sky/grass only)");
 assert.ok(source.includes("geometryHealth.roadSections!==3"),
           "Road mesh must explicitly reject missing or degenerate surfaces");
-console.log("SUCCESS:",tested,"real Three.js pixel-ray/ground intersections, stable widths and depths");
+const headingSource=take(" function roadHeading(p,screenDirection){",
+                         " function update3D(currentTime){");
+const headingFactory=new Function("sampleEdge","imageToGround",headingSource+"\nreturn roadHeading;");
+const roadHeading=headingFactory(sampleEdge,imageToGround);
+const y=.63;
+const leftCenter=(sampleEdge("left",y)+sampleEdge("innerLeft",y))/2;
+const h1=roadHeading([1,leftCenter-.025,y,.07,.12],.15);
+const h2=roadHeading([1,leftCenter+.025,y,.07,.12],.15);
+assert.ok(Number.isFinite(h1)&&Number.isFinite(h2),"Traffic heading should be finite");
+assert.ok(Math.abs(Math.atan2(Math.sin(h2-h1),Math.cos(h2-h1)))<.12,
+          "Observed bounding-box X jitter must not rotate car model sideways");
+const rightCenter=(sampleEdge("innerRight",y)+sampleEdge("right",y))/2;
+const hr=roadHeading([1,rightCenter,y,.07,.12],-.15);
+assert.ok(Number.isFinite(hr),"Heading of opposite carriageway must be finite");
+assert.ok(Math.abs(Math.atan2(Math.sin(hr-h1),Math.cos(hr-h1)))>1.4,
+          "Vehicles in opposing carriageways must generally face opposite travel directions");
+console.log("SUCCESS:",tested,"Three.js pixel-ray projections + stable lane-aligned vehicle yaw");
