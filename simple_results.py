@@ -106,6 +106,35 @@ def show_results(job,snap):
         from traffic_control_view import show_concept
         show_concept(job,snap,interaction_events,key="control_"+job.id)
 
+    with st.expander("Measure the AI's accuracy against labeled frames (optional)"):
+        st.write("Actual precision, recall and F1 require manually labeled ground-truth boxes. Unlabeled video frames are excluded completely.")
+        st.download_button("Download labeling template",
+                           "frame_number,class,x1,y1,x2,y2\\n",
+                           file_name="road-ground-truth-template.csv",
+                           mime="text/csv",key="truth_template_"+job.id)
+        st.caption("Add one row per ground-truth object. Use class 'none' for a checked frame containing no relevant objects. Use pixel coordinates from the original video and matching frame_number values.")
+        labels=st.file_uploader("Upload manually checked frame annotations (CSV)",
+                                type=["csv"],key="truth_upload_"+job.id)
+        if labels is not None:
+            from detection_qa import evaluate_detections
+            try:
+                assessment=evaluate_detections(labels.getvalue(),job.objects_file)
+                st.success(f"Evaluated {assessment['annotated_frames']} labeled video frames at IoU ≥ {assessment['iou_threshold']:.2f}.")
+                a,b,c=st.columns(3)
+                for col,name in zip((a,b,c),("precision","recall","f1")):
+                    value=assessment["overall"][name]
+                    col.metric(name.title(),"Not defined" if value is None else f"{value:.1%}")
+                st.dataframe([{"class":name,**values}
+                              for name,values in assessment["classes"].items()],
+                             use_container_width=True,hide_index=True)
+                st.caption(assessment["limitations"])
+                st.download_button("Download validation summary (JSON)",
+                                   json.dumps(assessment,indent=2),
+                                   file_name="detection-validation.json",
+                                   mime="application/json",key="qa_download_"+job.id)
+            except (OSError,ValueError,UnicodeError) as exc:
+                st.error("Could not evaluate these annotations: "+str(exc))
+
     with st.expander("Download data & inspect measurement limits"):
         report={"source":snap["label"],"status":snap["status"],
                 "crossings":crossings,"evidence":evidence,
