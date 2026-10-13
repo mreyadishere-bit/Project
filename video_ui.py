@@ -33,9 +33,10 @@ STATUS = {
     "error": ("Needs attention", "red"),
 }
 PRESETS = {
-    "Quick scan": ("yolo26n.pt", 2, 512),
-    "Balanced": ("yolo26s.pt", 5, 768),
-    "Deep analysis": ("yolo26m.pt", 15, 960),
+    "Fast CPU": ("yolo26n.pt", 2, 640),
+    "Balanced": ("yolo26s.pt", 2, 768),
+    "Deep analysis": ("yolo26s.pt", 5, 960),
+    "Max detail (slow)": ("yolo26m.pt", 2, 1280),
     "Custom": (None, None, None),
 }
 ALLOWED_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".m4v"}
@@ -200,17 +201,19 @@ def source_and_settings(hosted: bool, running: bool):
         preset = st.radio("Choose performance", list(PRESETS), horizontal=True,
                           label_visibility="collapsed", key="sr_preset", disabled=running)
         model, fps, image_size = PRESETS[preset]
+        st.caption("Preset target = frames sampled per VIDEO second, not guaranteed processing speed. More detail can be much slower on shared CPU. Sampled frames span the entire video.")
         with st.expander("Fine-tune detection & export", expanded=(preset == "Custom" and not running)):
             c1, c2 = st.columns(2)
             with c1:
                 if preset == "Custom":
                     model = st.selectbox("Detection model", ["yolo26n.pt", "yolo26s.pt", "yolo26m.pt"],
                                          disabled=running)
-                    fps = st.select_slider("Frames analyzed / video second", [1, 2, 5, 10, 15, 30],
+                    fps = st.select_slider("Frames analyzed / video second", [1, 2, 3, 5, 10, 15, 30],
                                            value=5, disabled=running)
-                    image_size = st.selectbox("Inference image size", [416, 512, 640, 768, 960],
+                    image_size = st.selectbox("Inference image size", [416, 512, 640, 768, 960, 1280],
                                               index=2, disabled=running)
-                confidence = st.slider("Minimum confidence", .1, .9, .35, .05, disabled=running)
+                confidence = st.slider("Minimum confidence", .10, .90, .18, .01, disabled=running,
+                    help="Lower threshold improves recall for distant cars but can increase false positives. Counting still requires stable track IDs.")
             with c2:
                 all_classes = st.checkbox("Detect all supported YOLO classes", value=False, disabled=running)
                 save_video = st.checkbox("Create final playable video (H.264)", value=True, disabled=running or source_mode in {"PC camera", "YouTube Live (beta)", "Free Live Traffic Cameras"},key="sr_export_video")
@@ -290,7 +293,7 @@ def source_and_settings(hosted: bool, running: bool):
                         road_calibration=road_calibration,
                         camera_fov_deg=camera_fov_deg,
                         count_line_fraction=count_line_fraction,
-                        tracker="botsort.yaml"
+                        tracker="traffic_botsort.yaml"
                     ), label=label, source_kind=("youtube" if source_mode == "YouTube Live (beta)" else "public_live" if source_mode == "Free Live Traffic Cameras" else "file")
                 )
                 st.rerun()
