@@ -52,3 +52,27 @@ jobs:
           print('Hosted UI, navigation and YouTube source form render successfully')
           PY
 
+
+      - name: Temporary metadata-only format diagnosis - YouTube FWvIPfxK5Jo
+        continue-on-error: true
+        timeout-minutes: 2
+        run: |
+          python - <<'PY'
+          import yt_dlp
+          u = "https://www.youtube.com/watch?v=FWvIPfxK5Jo"
+          opts = {"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True,
+                  "ignore_no_formats_error": True, "socket_timeout": 10, "retries": 0,
+                  "extractor_retries": 0}
+          try:
+              with yt_dlp.YoutubeDL(opts) as ydl:
+                  info = ydl.extract_info(u, download=False)
+              print("STATUS", str(info.get("live_status"))[:70], "IS_LIVE", info.get("is_live"), flush=True)
+              formats = info.get("formats") or []
+              print("FORMAT_COUNT", len(formats), flush=True)
+              print("FORMAT_TYPES", [
+                  (x.get("format_id"), x.get("protocol"), x.get("vcodec"), x.get("ext"), x.get("height"))
+                  for x in formats[:18]], flush=True)
+              print("DIRECT_MEDIA_AVAILABLE", bool(info.get("url")), flush=True)
+          except Exception as exc:
+              print("FORMAT_PROBE_ERROR", type(exc).__name__, str(exc)[:400], flush=True)
+          PY
