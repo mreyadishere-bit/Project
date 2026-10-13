@@ -18,6 +18,7 @@ from ui_theme import apply_theme
 from video_engine import VideoJob, VideoSettings, OUTPUTS
 from live_sources import canonical_youtube_live_url
 from public_cameras import get_camera, camera_choices
+from results_ui import results_page
 
 STATUS = {
     "starting": ("Starting", "blue"),
@@ -25,6 +26,7 @@ STATUS = {
     "loading model": ("Loading AI model", "blue"),
     "running": ("Analyzing", "green"),
     "completed": ("Completed", "green"),
+    "finalizing video": ("Encoding final video", "blue"),
     "stopped": ("Stopped", "amber"),
     "ended": ("Broadcast ended", "amber"),
     "error": ("Needs attention", "red"),
@@ -122,7 +124,7 @@ def source_and_settings(hosted: bool, running: bool):
     """Draw inputs and return validated form selections without starting jobs."""
     section_header("New analysis", "01 / Choose a source and processing profile")
     with st.container(border=True):
-        options = ["Free Live Traffic Cameras", "Upload video", "YouTube Live (beta)"]
+        options = ["Upload video", "Free Live Traffic Cameras", "YouTube Live (beta)"]
         if not hosted:
             options += ["Local file", "PC camera"]
         source_mode = st.radio("Video source", options, horizontal=True, disabled=running, key="sr_source")
@@ -210,9 +212,9 @@ def source_and_settings(hosted: bool, running: bool):
                 confidence = st.slider("Minimum confidence", .1, .9, .35, .05, disabled=running)
             with c2:
                 all_classes = st.checkbox("Detect all supported YOLO classes", value=False, disabled=running)
-                save_video = st.checkbox("Export annotated video", value=False, disabled=running or source_mode in {"PC camera", "YouTube Live (beta)", "Free Live Traffic Cameras"})
+                save_video = st.checkbox("Create final playable video (H.264)", value=True, disabled=running or source_mode in {"PC camera", "YouTube Live (beta)", "Free Live Traffic Cameras"},key="sr_export_video")
                 if save_video:
-                    st.caption("Uses significant disk space on long recordings.")
+                    st.caption("Creates the full-timeline, time-sampled annotated MP4 after analysis. H.264 export takes additional time and disk space; original audio is not kept.")
         with st.expander("Speed calibration (optional, research only)"):
             calibrate = st.checkbox("I have a measured metres-per-pixel scale for this camera",
                                     disabled=running, key="sr_calibrate")
@@ -328,7 +330,7 @@ def video_stage(snap, job):
                         st.caption("This does not prove the broadcast is offline: YouTube may allow normal playback but refuse server-side frame access.")
                         st.link_button("Open original YouTube video ↗", job.source,
                                        use_container_width=True)
-                if snap["status"] in {"starting", "connecting stream", "loading model", "running"}:
+                if snap["status"] in {"starting", "connecting stream", "loading model", "running", "finalizing video"}:
                     if not snap["is_live"]:
                         if st.button("Resume" if snap["paused"] else "Pause", use_container_width=True, key="sr_pause"):
                             job.resume() if snap["paused"] else job.pause()
@@ -521,7 +523,7 @@ def video_tab():
     hosted = os.environ.get("SMART_ROAD_HOSTED", "0") == "1"
     job = st.session_state.get("video_job")
     snap = job.snapshot() if job else None
-    active = bool(snap and snap["status"] in {"starting", "connecting stream", "loading model", "running"})
+    active = bool(snap and snap["status"] in {"starting", "connecting stream", "loading model", "running", "finalizing video"})
     brand(hosted, snap)
     if hosted:
         st.caption("CLOUD RESEARCH PREVIEW · Shared server, no accounts or privacy guarantees. Upload only non-sensitive, permitted video. Long jobs can be interrupted by hosting limits.")
@@ -539,8 +541,12 @@ def video_tab():
         def monitor():
             current = st.session_state.get("video_job")
             state = current.snapshot() if current else None
+            if state and state["status"] in {"completed", "stopped", "ended", "error"}:
+                if st.session_state.get("sr_last_finished_job") != current.id:
+                    st.session_state["sr_last_finished_job"] = current.id
+                    st.rerun(scope="app")
             if state and state["status"] in {"completed", "stopped", "ended"}:
-                st.success("Analysis finished · A visual results summary and the strongest detected frame appear below.")
+                st.success("Video analysis completed. Detailed, playable results are below.")
             video_stage(state, current)
             live_metrics(state)
             if state and state["analyzed_frames"]:
@@ -567,9 +573,12 @@ def video_tab():
                     st.line_chart(df.set_index("video_second")[["vehicles", "people"]],
                                   height=210)
                     st.caption("Latest sampled-frame counts. Navigate to Intelligence for detailed tracks and Events & reports for exports.")
-                if state["status"] in {"completed", "stopped", "ended"}:
-                    st.markdown("**Your files and downloadable reports:** select **Events & reports** in the navigation above.")
         monitor()
+        # Final report stays on the SAME Workspace page; no navigation required.
+        current = st.session_state.get("video_job")
+        final_state = current.snapshot() if current else None
+        if final_state and final_state["status"] in {"completed", "stopped", "ended"} and final_state["analyzed_frames"]:
+            results_page(current, final_state, hosted)
     elif selection == "Intelligence":
         @st.fragment(run_every=1.5 if active else None)
         def intelligence_monitor():
