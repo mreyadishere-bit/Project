@@ -57,10 +57,19 @@ def resolve_youtube_live(raw_url: str) -> tuple[str, str]:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
     except Exception as exc:
+        error_text = str(exc).lower()
+        if ("not a bot" in error_text or "sign in to confirm" in error_text
+                or "login required" in error_text):
+            raise RuntimeError(
+                "YouTube blocked automated video access from this server. "
+                "The original video might still play normally on YouTube, but the AI "
+                "cannot analyze its frames through this connection. "
+                "Use an operator-authorized machine-readable feed or upload permitted footage."
+            ) from exc
         raise RuntimeError(
-            "Could not access this public YouTube broadcast. It may be offline, "
-            "private, geo-restricted, or blocked on this server. "
-            f"Extractor said: {str(exc)[:250]}"
+            "Unable to access this broadcast from the analysis server. "
+            "It may be offline, private, geographically restricted, or temporarily inaccessible. "
+            "Try another authorized public live source or an uploaded video."
         ) from exc
     if not isinstance(info, dict):
         raise RuntimeError("YouTube did not provide playable metadata.")
