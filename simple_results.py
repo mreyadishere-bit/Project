@@ -9,17 +9,19 @@ from insight_engine import explain_video
 
 def _summary_curve(path,max_items=400):
     if not path.is_file():return None
+    # Bounded-memory two-pass downsampling even for hours of footage.
     with path.open("r",encoding="utf-8-sig",newline="") as stream:
-        reader=csv.DictReader(stream)
-        rows=list(reader)
-    if not rows:return None
-    step=max(1,len(rows)//max_items)
+        length=sum(1 for _ in csv.DictReader(stream))
+    if not length:return None
+    step=max(1,(length+max_items-1)//max_items)
     data=[]
-    for row in rows[::step]:
-        try:data.append({"Time (seconds)":float(row["video_second"]),
-                         "Vehicles visible":int(row["vehicles"]),
-                         "People visible":int(row["people"])})
-        except (KeyError,ValueError):continue
+    with path.open("r",encoding="utf-8-sig",newline="") as stream:
+        for i,row in enumerate(csv.DictReader(stream)):
+            if i%step:continue
+            try:data.append({"Time (seconds)":float(row["video_second"]),
+                             "Vehicles visible":int(row["vehicles"]),
+                             "People visible":int(row["people"])})
+            except (KeyError,ValueError):continue
     return pd.DataFrame(data).set_index("Time (seconds)") if data else None
 
 
