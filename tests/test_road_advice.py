@@ -36,7 +36,9 @@ class RecommendationsTests(unittest.TestCase):
         self.assertNotIn("pedestrian crossing",titles)
         self.assertNotIn("speed limit",titles)
         self.assertFalse(any(r["simulation_option"]=="crossing" for r in report["recommendations"]))
-        self.assertEqual(report["context"]["kind"],"highway_hint")
+        self.assertEqual(report["context"]["kind"],"unknown")
+        self.assertEqual(report["context"]["source_title_hint"],"highway")
+        self.assertFalse(report["context"]["pedestrian_infrastructure_claim_allowed"])
 
     def test_unknown_road_not_forced_to_crosswalk(self):
         with tempfile.TemporaryDirectory() as d:
