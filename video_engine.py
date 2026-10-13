@@ -478,6 +478,7 @@ class VideoJob:
                 self.error = f"{type(exc).__name__}: {exc}"
                 self.status = "error"
         finally:
+            user_cancelled = self._stop.is_set()
             self._stop.set()  # Ensure camera reader can leave its loop.
             if camera_reader is not None:
                 camera_reader.close()
@@ -507,7 +508,7 @@ class VideoJob:
                         self.raw_video_file.unlink(missing_ok=True)
                 with self._lock:
                     if self.status == "finalizing video":
-                        self.status = "stopped" if self._stop.is_set() else (
+                        self.status = "stopped" if user_cancelled else (
                             "ended" if self.is_live else "completed"
                         )
             if cap is not None:
