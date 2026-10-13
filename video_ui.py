@@ -389,8 +389,10 @@ def live_metrics(snap):
     section_header("Scene at a glance", "03 / Live observations, not predicted accidents")
     counts = snap.get("detected_now", {}) if snap else {}
     scene = snap.get("scene", {}) if snap else {}
+    passed=(snap.get("crossings") or {}).get("total_passed",0) if snap else 0
     metric_cards([
-        ("Vehicles in current frame", counts.get("vehicles", 0), "objects", ""),
+        ("Vehicles PASSED counting line", passed, "crossings", "positive"),
+        ("Vehicles visible in last frame", counts.get("vehicles", 0), "objects", ""),
         ("Pedestrians in current frame", counts.get("people", 0), "objects", ""),
         ("Track IDs observed", snap.get("unique_tracks", 0) if snap else 0, "IDs", ""),
         ("Apparent motion", f"{snap.get('mean_apparent_speed', 0):.1f}" if snap else "—", "px/s", ""),
@@ -402,7 +404,7 @@ def live_metrics(snap):
     st.markdown(
         '<div class="sr-footnote">* Overlapping detection boxes can inflate occupancy. '
         'Close objects in image coordinates do not prove close distances on the road. '
-        'Speed is an approximate image-scale estimate only when manual calibration is supplied.</div>',
+        'Only crossings over the chosen line are counted as passed. Ground-plane km/h requires surveyed road corners; uncalibrated px/s is not road speed.</div>',
         unsafe_allow_html=True
     )
 
