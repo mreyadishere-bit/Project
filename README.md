@@ -4,6 +4,23 @@
 
 [Live Streamlit research demo](https://project-imqe2wriheusspmbnmgyxg.streamlit.app/) · Python 3.11 · Streamlit · Ultralytics YOLO · OpenCV
 
+## Smart Road AI v4 — video evidence & scenario lab
+
+The hosted [Smart Road AI app](https://project-imqe2wriheusspmbnmgyxg.streamlit.app/) now defaults to **Upload video** (recorded footage) so repeatable analysis can be compared. Set `Create final playable video (H.264)` on before starting.
+
+After the job finishes, the **same Workspace page** displays:
+
+1. Plain-language executive summary, detector observations and an explicitly provisional review-priority index.
+2. Embedded H.264 annotated video using frames **sampled across the source duration**, not every raw source frame; audio is not preserved.
+3. Full-session class statistics, object contact-point activity heatmap, frame count trends and time-stamped observations.
+4. Explainable rule-based recommendations, including the evidence that triggered each recommendation and what needs real-world verification.
+5. Side-by-side animated **2.5D before/after traffic simulation** with adjustable assumed vehicle speeds, car volume, pedestrian arrivals and crossing interventions. The simulation is a `toy scenario`, not a calibrated prediction or reconstruction.
+6. JSON summary plus complete CSV observations, tracking data and event log.
+
+**Performance:** On shared free cloud CPU, analysis cannot promise realtime speed or consistent results across long uploads. Lower `Analysis profile` FPS for a quick scan or use a local/GPU worker for hours of deep analysis. A finished H.264 video export requires extra encoding time and temporary disk storage.
+
+**Source and study limitations:** YOLO identifies only model-supported classes; potholes, water, road defects and verified crashes/near misses require additional trained models and measurement methods. Heatmap indicates where image detections occurred, not dangerous places. Approximate m/pixel speed has uncorrected perspective and should not be used for speed enforcement. A 2.5D illustrative scenario cannot establish real-world effectiveness; engineering review and collected before/after data are still required.
+
 ## What works today
 
 - Long video files without a 60-second analysis cap in the local version (processing time/storage still depend on hardware).
