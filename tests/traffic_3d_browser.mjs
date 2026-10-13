@@ -13,6 +13,15 @@ page.on('console',msg=>{if(msg.type()==='error')errors.push(msg.text())});
 try{
  await page.goto('http://127.0.0.1:8123/scene.html',{waitUntil:'domcontentloaded'});
  await page.locator('#simulation canvas').waitFor({state:'visible',timeout:40000});
+ await page.waitForFunction(()=>{
+   const video=document.querySelector('#source');
+   return video?.readyState>=1&&video?.videoWidth>0&&video?.duration>0;
+ },{timeout:15000});
+ const sourceDetails=await page.locator('#source').evaluate(v=>({
+   width:v.videoWidth,height:v.videoHeight,duration:v.duration
+ }));
+ assert.equal(sourceDetails.width,480,'Source footage must actually decode');
+ assert.ok(sourceDetails.duration>4,'Fixture must preserve nonzero original-video timeline');
  await page.waitForFunction(()=>document.getElementById('loading')?.hidden===true,
                             {timeout:45000});
  assert.equal(await page.locator('#simulation canvas').count(),1);
