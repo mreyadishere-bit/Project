@@ -17,21 +17,13 @@ CAMERAS = {
         "region": "Sacramento, California, USA",
         "rights_url": "https://dot.ca.gov/conditions-of-use",
     },
-    "seattle-spokane-st": {
-        "label": "Washington · Seattle · 11th Ave SW / Spokane St",
-        "operator": "Seattle Department of Transportation",
-        "stream_url": "https://58cc2dce193dd.streamlock.net/live/11_SW_Spokane_EW.stream/playlist.m3u8",
-        "info_url": "https://www.seattle.gov/transportation/projects-and-programs/programs/technology-program/traffic-cameras",
-        "region": "Seattle, Washington, USA",
-        "rights_url": "https://www.seattle.gov/transportation",
-    },
-    "seattle-50th-st": {
-        "label": "Washington · Seattle · 12th Ave NE / NE 50th St",
-        "operator": "Seattle Department of Transportation",
-        "stream_url": "https://58cc2dce193dd.streamlock.net/live/12_NE_50_EW.stream/playlist.m3u8",
-        "info_url": "https://www.seattle.gov/transportation/projects-and-programs/programs/technology-program/traffic-cameras",
-        "region": "Seattle, Washington, USA",
-        "rights_url": "https://www.seattle.gov/transportation",
+    "caltrans-district7-cctv101": {
+        "label": "California · Los Angeles region · District 7 CCTV-101",
+        "operator": "Caltrans (California Department of Transportation)",
+        "stream_url": "https://wzmedia.dot.ca.gov/D7/CCTV-101.stream/playlist.m3u8",
+        "info_url": "https://cwwp2.dot.ca.gov/vm/streamlist.htm",
+        "region": "Southern California, USA",
+        "rights_url": "https://dot.ca.gov/conditions-of-use",
     },
 }
 
@@ -43,7 +35,7 @@ def get_camera(source_id: str):
     record = dict(CAMERAS[source_id])
     parsed = urlsplit(record["stream_url"])
     if parsed.scheme != "https" or parsed.hostname not in {
-        "wzmedia.dot.ca.gov", "58cc2dce193dd.streamlock.net"
+        "wzmedia.dot.ca.gov"
     } or not parsed.path.endswith(".m3u8"):
         raise RuntimeError("Public camera catalog failed host validation.")
     return record
