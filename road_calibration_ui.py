@@ -132,7 +132,7 @@ def show_calibration(job,snapshot):
     tracks=result["tracks_report"]
     a,b,c=st.columns(3)
     a.metric("Tracks with speed evidence",tracks["accepted_track_count"])
-    b.metric("Median track speed (km/h)",
+    b.metric("Median vehicle-track speed (km/h)",
              str(tracks["median_track_speed_kmh"]) if tracks["median_track_speed_kmh"] is not None
              else "Not reliable")
     c.metric("Surveyed area (m²)",round(cal.width_m*cal.length_m))
