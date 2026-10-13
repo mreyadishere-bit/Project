@@ -31,6 +31,7 @@ jobs:
         run: |
           npm install --no-save --no-package-lock --prefix /tmp/smart-road-three three@0.170.0
           node tests/road_projection_smoke.mjs
+          node tests/road_motion_smoke.mjs
       - name: Run tests
         run: python -m unittest discover -s tests -v
       - name: Smoke-test redesigned zero-settings hosted UI
