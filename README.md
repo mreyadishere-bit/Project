@@ -4,6 +4,43 @@
 
 [Live Streamlit research demo](https://project-imqe2wriheusspmbnmgyxg.streamlit.app/) · Python 3.11 · Streamlit · Ultralytics YOLO · OpenCV
 
+## Road Studio V7 · True frame-matched, explainable road previews
+
+The default comparison no longer treats a generic 3D highway as proof of a
+real-world fix. **The original HTML5 footage is on the left, and the EXACT
+SAME decoded video frame is copied directly into the right-hand canvas at
+the same timestamp**. This replaces the old temporal-median scene photo,
+which produced pink lighting ghosts and garbled stationary backgrounds at
+night. The original video remains the sole clock.
+
+The right-hand video view adds only clearly disclosed visual experiments:
+- **Low visibility:** if observed on sampled frames, show a brighter,
+  higher-contrast *camera exposure* preview. This is NOT photometric
+  simulation of streetlights or validated risk reduction.
+- **Observed vehicle flow:** time-aligned, bounded AI track trails on the
+  genuine original road image; no extra cars are generated. Missing tracks
+  remain missing and are explicitly acknowledged.
+- **Pedestrian interactions:** highlight only detected person track
+  footpoints. Image closeness is not physical separation or a collision.
+- **Insufficient data / lane-marking concept:** do not draw a made-up
+  zebra crossing or invent pavement lanes on an unsurveyed scene.
+
+Every experiment explains **What was observed, What visibly changed,
+Why it might matter, and What field verification is needed**.
+
+An optional **3D inspection mode** still renders real vehicle meshes and
+geometry. Source road context is conservative: if the filename is not even
+a highway hint, the 3D mode uses a source-image projected flat ground
+patch instead of automatically constructing the same fictional dual
+carriageway in every camera. This is still approximate, not a surveyed
+Blender-grade metric model.
+
+Automated regression checks cover screenshot-independent video clock wiring,
+no median blending, source-frame copying, roadway context gating, camera
+projection and no-fabricated-advice scenario selection. Passing these tests
+does not establish visual correctness on each supported video; test in a
+real browser and verify detections against labeled traffic footage.
+
 ## Road Studio V6.2 · Smooth 3D replay and readiness states
 
 The observed source image and 3D scenario now show a **loading overlay** while
