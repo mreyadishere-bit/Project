@@ -6,6 +6,7 @@ Calibration is used for road-plane speeds and locations only, not object mass.
 from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
+from functools import lru_cache
 from math import atan2, degrees, hypot, isfinite
 import cv2
 import numpy as np
@@ -33,6 +34,7 @@ class RoadCalibration:
             # OpenCV area sign is orientation-dependent, and ignored here.
             pass
 
+    @lru_cache(maxsize=128)
     def matrix(self):
         p=np.array(self.points,np.float32)
         target=np.array([[0,0],[self.width_m,0],
