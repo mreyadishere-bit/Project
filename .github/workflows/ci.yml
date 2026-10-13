@@ -29,30 +29,18 @@ jobs:
         run: python -m compileall -q app.py video_ui.py results_ui.py reconstruction_ui.py reconstruction.py traffic_geometry.py metric_scene.py traffic_metrics.py simulation_ui.py simulation_engine.py insight_engine.py ui_theme.py video_engine.py scene_intelligence.py road_tracking.py model_runtime.py simple_workspace.py simple_results.py stable_scene.py live_sources.py live_decoder.py public_cameras.py analysis.py database.py receiver.py routes.py weather.py
       - name: Run tests
         run: python -m unittest discover -s tests -v
-      - name: Smoke-test hosted Streamlit UI
+      - name: Smoke-test redesigned zero-settings hosted UI
         env:
           SMART_ROAD_HOSTED: '1'
         run: |
           python - <<'PY'
           from streamlit.testing.v1 import AppTest
-          app = AppTest.from_file('app.py').run(timeout=35)
+          app = AppTest.from_file('app.py').run(timeout=40)
           if app.exception:
-              raise AssertionError(f'Streamlit runtime exception: {app.exception}')
-          assert app.radio, 'Expected interactive navigation'
-          for section in ['Intelligence', 'Events & reports', 'Workspace']:
-              app.radio[0].set_value(section)
-              app.run(timeout=35)
-              if app.exception:
-                  raise AssertionError(f'Error on {section}: {app.exception}')
-          app.radio[0].set_value('Workspace')
-          app.run(timeout=35)
-          app.radio[1].set_value('YouTube Live (beta)')
-          app.run(timeout=35)
-          if app.exception:
-              raise AssertionError(f'Error on live source selector: {app.exception}')
-          assert any('YouTube LIVE URL' in item.label for item in app.text_input)
-          print('Hosted UI, navigation and YouTube source form render successfully')
+              raise AssertionError(f'Hosted UI error: {app.exception}')
+          assert len(app.file_uploader) == 1, 'One video uploader expected'
+          assert len(app.radio) == 0, 'No settings or navigation radios expected'
+          assert len(app.slider) == 0, 'No configuration sliders expected'
+          assert any('Analyze road' in b.label for b in app.button), 'Analyze action missing'
+          print('New minimal road upload workspace renders successfully')
           PY
-
-
-
