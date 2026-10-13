@@ -22,6 +22,15 @@ def build_scene(job, snapshot, max_points=30000, max_tracks=500, include_annotat
     # Approximate rows per file based on size; sample evenly across the
     # entire CSV, rather than silently dropping the end of a long recording.
     stride=max(1,int(csvpath.stat().st_size / (max_points*175))+1)
+    # A post-analysis survey overrides stale/incomplete world values from
+    # the earlier uncalibrated processing run. No YOLO rerun is necessary.
+    calibration=None
+    if snapshot.get("calibration"):
+        from traffic_geometry import RoadCalibration
+        data=snapshot["calibration"]
+        calibration=RoadCalibration(
+            tuple(tuple(p) for p in data["points"]),
+            float(data["width_m"]),float(data["length_m"]))
     tracks={}
     sampled=0
     ignored=0
@@ -40,7 +49,12 @@ def build_scene(job, snapshot, max_points=30000, max_tracks=500, include_annotat
                        round(float(row["x2"])-float(row["x1"]),1)/w,
                        round(float(row["y2"])-float(row["y1"]),1)/h]
                 if not (0<=point[1]<=1 and -0.1<=point[2]<=1.1):continue
-                if row.get("world_x_m") and row.get("world_y_m"):
+                if calibration is not None:
+                    calibrated=calibration.world(
+                        float(row["center_x"]),float(row["y2"]),w,h)
+                    if calibrated is not None:
+                        point.extend([round(calibrated[0],3),round(calibrated[1],3)])
+                elif row.get("world_x_m") and row.get("world_y_m"):
                     point += [round(float(row["world_x_m"]),3),
                               round(float(row["world_y_m"]),3)]
             except (ValueError,TypeError,KeyError):
@@ -58,18 +72,14 @@ def build_scene(job, snapshot, max_points=30000, max_tracks=500, include_annotat
     im.save(encoded,"JPEG",quality=65,optimize=True)
     metric=None
     cal=snapshot.get("calibration")
-    if cal:
-        try:
-            import cv2
-            from traffic_geometry import RoadCalibration
-            from metric_scene import surveyed_road_scene
-            road=RoadCalibration(tuple(tuple(p) for p in cal["points"]),float(cal["width_m"]),float(cal["length_m"]))
-            source_bgr=cv2.imread(str(reference))
-            if source_bgr is not None:
-                metric=surveyed_road_scene(source_bgr,road,
-                             float(snapshot.get("camera_fov_deg",70)))
-        except (ValueError,RuntimeError,cv2.error,TypeError,KeyError):
-            metric=None
+    if calibration is not None:
+        import cv2
+        from metric_scene import surveyed_road_scene
+        source_bgr=cv2.imread(str(reference))
+        if source_bgr is None:
+            raise ValueError("Original calibration frame could not be decoded.")
+        metric=surveyed_road_scene(source_bgr,calibration,
+                                  float(snapshot.get("camera_fov_deg",70)))
     video_inline=None
     video=Path(getattr(job,"video_file",""))
     # Keep embedding capped so long recordings do not overload Streamlit
