@@ -50,6 +50,12 @@ class SimpleWorkspaceTests(unittest.TestCase):
         self.assertIn('vehicleModel',VIEWER)
         self.assertIn('Top view',VIEWER)
         self.assertIn('Original recorded video',VIEWER)
+        self.assertIn('id="matchedBackground"', VIEWER)
+        self.assertIn('environment.visible=!aligned', VIEWER)
+        self.assertIn('backgroundImage', VIEWER)
+        self.assertIn('sourceTexture', VIEWER)
+        self.assertIn('video.currentTime', VIEWER)
+
         self.assertNotIn('Observed trajectories',VIEWER)
         self.assertNotIn('id="before"',VIEWER)
         self.assertNotIn('requestAnimationFrame(frame)',VIEWER)
