@@ -21,6 +21,24 @@ class OriginalComparisonVideoTests(unittest.TestCase):
             job.source_kind="public_live"
             self.assertIsNone(source_video_path(job))
 
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"),"ffmpeg and ffprobe needed")
+    def test_browser_compatible_mp4_reuses_exact_original_bytes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder=Path(temp)
+            source=folder/"road.mp4"
+            created=subprocess.run([
+                "ffmpeg","-y","-hide_banner","-loglevel","error",
+                "-f","lavfi","-i","color=c=blue:s=128x72:r=10:d=1",
+                "-c:v","libx264","-pix_fmt","yuv420p",str(source)
+            ],capture_output=True,timeout=22)
+            if created.returncode:
+                self.skipTest("FFmpeg build missing libx264")
+            job=SimpleNamespace(source=source,source_kind="file",folder=folder)
+            uri,message=prepare_source_video(job)
+            self.assertEqual(base64.b64decode(uri.split(",",1)[1]),source.read_bytes())
+            self.assertIn("unchanged",message)
+            self.assertFalse((folder/"comparison_original.mp4").exists())
+
     def test_no_source_requires_local_picker(self):
         with tempfile.TemporaryDirectory() as temp:
             job=SimpleNamespace(source=Path(temp)/"missing.mov",
