@@ -48,16 +48,17 @@ class FFmpegLiveCapture:
         # proportional to the source stream's potentially untrusted resolution.
         vf = (f"fps={fps},scale={width}:{height}:force_original_aspect_ratio=decrease,"
               f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2")
-        args = [
-            ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error",
-            "-rw_timeout", "12000000",
-            "-user_agent", "Mozilla/5.0 (compatible; SmartRoadResearch/1.0)",
-            "-referer", "https://www.youtube.com/",
-            "-i", url,
-            "-map", "0:v:0", "-an", "-sn", "-dn",
-            "-vf", vf, "-pix_fmt", "bgr24",
-            "-f", "rawvideo", "pipe:1",
-        ]
+        args = [ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error"]
+        if parsed.scheme == "https":
+            args.extend([
+                "-rw_timeout", "12000000",
+                "-user_agent", "Mozilla/5.0 (compatible; SmartRoadResearch/1.0)",
+                "-referer", "https://www.youtube.com/",
+            ])
+        args.extend([
+            "-i", url, "-map", "0:v:0", "-an", "-sn", "-dn",
+            "-vf", vf, "-pix_fmt", "bgr24", "-f", "rawvideo", "pipe:1",
+        ])
         self._process = subprocess.Popen(
             args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL, bufsize=0,
