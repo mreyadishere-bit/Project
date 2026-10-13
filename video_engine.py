@@ -15,7 +15,7 @@ import time
 import uuid
 
 import cv2
-from scene_intelligence import image_motion, scene_diagnostics, diagnostic_events
+from scene_intelligence import image_motion, scene_diagnostics, diagnostic_events, draw_scene_overlay
 
 BASE = Path(__file__).resolve().parent
 OUTPUTS = BASE / "outputs"
@@ -317,7 +317,7 @@ class VideoJob:
                         if track_id not in active_ids:
                             del previous_points[track_id]
                             previous_motion.pop(track_id, None)
-                    annotated = tracked.plot()
+                    annotated = draw_scene_overlay(frame, detections)
                     if self.settings.save_video and not self.is_camera:
                         if writer is None:
                             h, w = annotated.shape[:2]
