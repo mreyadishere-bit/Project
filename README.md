@@ -8,6 +8,8 @@
 
 - Long video files without a 60-second analysis cap in the local version (processing time/storage still depend on hardware).
 - Recorded-video analysis on the hosted Streamlit demo, subject to server upload, memory and runtime limits.
+- **YouTube Live (beta):** choose `YouTube Live (beta)` in Workspace and paste a specific public `https://www.youtube.com/live/VIDEO_ID` or `https://www.youtube.com/watch?v=VIDEO_ID` URL. The worker validates and resolves the authorized public live stream with `yt-dlp`, then attempts continuous latest-frame tracking in OpenCV. Only a small number of shared live workers are supported. It may fail due to YouTube restrictions, bot checks, region restrictions or limited Streamlit CPU resources. No scraping of private, protected, or DRM-protected streams.
+- **Results discoverability:** the Workspace now shows cumulative sampled-frame counts, traffic timeline and the strongest detected frame when the final frame contains no objects. Open Intelligence for detailed tracks and Events & reports for CSV/JSON downloads.
 - Vehicle/pedestrian detection, ByteTrack IDs, image-plane trajectories and processed frame rates.
 - Frame-by-frame observations: counts by class, brightness, object bounding-box occupancy.
 - Experimental scene flags: visually close pedestrian/vehicle detections, dark frames and crowded images.
@@ -51,3 +53,10 @@ Hosted mode: set `SMART_ROAD_HOSTED=1` in the deployment environment (or Streaml
 All changes are tested with [GitHub Actions](https://github.com/mreyadishere-bit/Project/actions). The smoke tests use synthetic footage and mocked model predictions; a field validation set is still needed before real-world safety claims.
 
 _Research prototype — not intended for live traffic control or enforcement._
+
+
+## Live streaming realities
+
+- An embedded YouTube player and AI frame reader have **different buffers and may be several seconds behind each other**. The app does **not** analyze browser-visible pixels and does **not** guarantee synchronization, uninterrupted capture, or full source FPS.
+- Streamlit Community Cloud CPU cannot guarantee real-time analysis, 24/7 capture, or access to every public YouTube source. Some YouTube livestreams cannot be extracted from that hosting environment at all.
+- To achieve sustained near-live, multiple cameras, low latency and reliable resumes, deploy a dedicated inference worker with monitored GPU capacity, authorized feeds (RTSP/HLS), a queue and retention/privacy policies.
