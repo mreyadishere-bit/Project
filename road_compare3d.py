@@ -559,14 +559,69 @@ try {
  seek.oninput=e=>{if(duration())video.currentTime=Number(e.target.value)/1000*duration()};
  selector.onchange=applyIntervention;
  document.getElementById("ratio").oninput=e=>{speedRatio=Number(e.target.value)/100;document.getElementById("ratioText").textContent=e.target.value+"%"};
- document.getElementById("camera").onchange=e=>chooseCamera(e.target.value);
+ document.getElementById("camera").onchange=e=>{
+    chooseCamera(e.target.value);
+    if(e.target.value!=="source"){readyNotified=true;document.getElementById("modelLoading").hidden=true}
+    else if(!renderedFrame){readyNotified=false;document.getElementById("modelLoading").hidden=false}
+ };
  document.getElementById("reset").onclick=()=>{
     selector.value=data.initialOption||opts[0].id;selector.dispatchEvent(new Event("change"));
     speedRatio=1;document.getElementById("ratio").value=100;document.getElementById("ratioText").textContent="100%";
     document.getElementById("camera").value="source";chooseCamera("source");
  };
  applyIntervention();
- let readyNotified=false;
+ // The ORIGINAL HTML5 video is the only source on both panels.
+ // Its decoded current frame is copied without median filtering or geometry
+ // changes. User-visible overlays only show actual tracked image positions.
+ let readyNotified=false,renderedFrame=false,lastRenderedTime=null;
+ const annotationTracks=(data.tracks||[]).map(track=>({
+   className:track.class,segments:prepareMotion(track.points||[])
+ }));
+ function renderVideoMatchedFrame(t){
+    if(video.readyState<2||!video.videoWidth||!video.videoHeight)return false;
+    if(lastRenderedTime===t&&renderedFrame)return true;
+    try{
+       videoCtx.drawImage(video,0,0,frameWidth,frameHeight);
+    }catch(e){return false}
+    lastRenderedTime=t;renderedFrame=true;
+    overlayCtx.clearRect(0,0,frameWidth,frameHeight);
+    const scenario=selector.value;
+    if(scenario==="flow"||scenario==="pedestrians"){
+      let visible=0;
+      for(const track of annotationTracks){
+        if(scenario==="pedestrians"&&track.className!=="person")continue;
+        if(scenario==="flow"&&track.className==="person")continue;
+        const observation=interpolateMotion(track.segments,t);
+        if(!observation)continue;
+        visible++;
+        const p=observation.p,x=p[1]*frameWidth,y=p[2]*frameHeight;
+        overlayCtx.save();
+        overlayCtx.strokeStyle=scenario==="pedestrians"?"#ffcf57":"#74f2e5";
+        overlayCtx.lineWidth=Math.max(2,frameWidth/350);
+        const radius=Math.max(9,Math.min(36,p[4]*frameHeight*.55));
+        overlayCtx.beginPath();overlayCtx.arc(x,y,radius,0,Math.PI*2);overlayCtx.stroke();
+        if(scenario==="flow"){
+          const part=track.segments.find(a=>t>=a[0][0]&&t<=a[a.length-1][0]);
+          const seen=part?.filter(q=>q[0]<=t&&q[0]>=t-2.5)||[];
+          if(seen.length>=2){
+            overlayCtx.lineCap="round";overlayCtx.lineWidth=Math.max(3,frameWidth/250);
+            overlayCtx.beginPath();
+            seen.forEach((q,i)=>{if(i)overlayCtx.lineTo(q[1]*frameWidth,q[2]*frameHeight);
+              else overlayCtx.moveTo(q[1]*frameWidth,q[2]*frameHeight)});
+            overlayCtx.stroke();
+          }
+        }
+        overlayCtx.restore();
+      }
+      if(visible===0){
+        overlayCtx.fillStyle="rgba(17,35,53,.85)";
+        overlayCtx.fillRect(10,frameHeight-48,Math.min(frameWidth-20,320),35);
+        overlayCtx.fillStyle="#ffffff";overlayCtx.font="14px system-ui";
+        overlayCtx.fillText("No reliable tracked objects here",19,frameHeight-26);
+      }
+    }
+    return true;
+ }
  function animate(){
     // Absolutely no independent simulation clock. When the source is paused,
     // the modified 3D agents freeze at the same original timestamp.
@@ -575,18 +630,17 @@ try {
     seek.value=duration()?Math.round(1000*t/d):0;
     clock.textContent=labelTime(t);
     document.getElementById("timeText").textContent=labelTime(t)+" / "+labelTime(d);
-    update3D(t);controls.update();renderer.render(scene,camera);
-    if(!readyNotified){
-      readyNotified=true;
-      const panel=document.getElementById("modelLoading");
-      if(loadingStage)loadingStage.textContent="Finishing scene…";
-      backgroundReady.then(ok=>{
-        if(panel)panel.hidden=true;
-        if(!ok){
-          const hint=document.getElementById("comparisonDetail");
-          if(hint)hint.textContent+=" Camera background did not decode; some road details might not appear.";
-        }
-      });
+    if(document.getElementById("camera").value==="source"){
+       const drawn=renderVideoMatchedFrame(t);
+       if(!drawn&&loadingStage)loadingStage.textContent="Waiting for a playable original video frame…";
+       if(drawn&&!readyNotified){
+          readyNotified=true;
+          document.getElementById("modelLoading").hidden=true;
+       }
+    }else{
+       update3D(t);
+       controls.update();renderer.render(scene,camera);
+       if(!readyNotified){readyNotified=true;document.getElementById("modelLoading").hidden=true;}
     }
     requestAnimationFrame(animate);
  }
