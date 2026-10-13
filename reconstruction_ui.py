@@ -4,6 +4,7 @@ The image background and geometry are not a complete metric reconstruction.
 import json
 import streamlit as st
 from reconstruction import build_scene
+from insight_engine import suggestions
 
 HTML=r'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
@@ -24,7 +25,7 @@ canvas{width:100%;height:auto;display:block;background:#e5ecf4}
 .error{display:none;padding:12px;color:#b04936}
 @media(max-width:600px){.scene-grid{grid-template-columns:repeat(2,minmax(290px,1fr));overflow:auto}.options{grid-template-columns:1fr 1fr}}
 </style><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script></head><body>
-<div class="header"><strong>Road Vision · Camera-registered 3D</strong><span><button id="reset">Reset camera</button> <button id="pause">Pause</button> <button id="restart">Restart</button></span></div>
+<div class="header"><strong>Road Vision · Camera-registered 3D</strong><span><button id="apply">Apply recommendations</button> <button id="reset">Reset camera</button> <button id="pause">Pause</button> <button id="restart">Restart</button></span></div>
 <div class="controls">Original timeline <input type="range" id="seek" min="0" max="1000" value="0"><strong id="clock">00:00</strong>
 <select id="rate"><option value=".5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select></div>
 <div class="scene-grid"><div class="scene"><p>Observed <small>Video tracks + reference photo</small></p><div id="left"></div></div>
@@ -44,7 +45,7 @@ const T=await import('three'),mod=await import('three/addons/controls/OrbitContr
 const data=JSON.parse(document.getElementById('payload').textContent);
 const W=960,H=Math.max(240,Math.min(640,960*data.height/data.width));
 const metric=data.metric_scene;
-let playing=true,t=0,rate=1,last=performance.now(),mult=.7,widen=0,cross=true,photo=true;
+let playing=true,t=0,rate=1,last=performance.now(),mult=data.recommended.speed_pct/100,widen=0,cross=data.recommended.crossing,photo=true;
 const specs=metric?
  {car:[1.8,1.5,4.4],truck:[2.5,3.2,9],bus:[2.5,3.2,11],motorcycle:[.9,1.2,2.2],bicycle:[.7,1.5,1.8],person:[.55,1.8,.5]}:
  {car:[42,24,22],truck:[65,32,38],bus:[68,35,38],motorcycle:[22,17,14],bicycle:[19,15,10],person:[11,25,11]};
@@ -156,6 +157,16 @@ function render(now){
  }
  requestAnimationFrame(render);
 }
+document.getElementById('apply').onclick=()=>{
+  mult=data.recommended.speed_pct/100;cross=data.recommended.crossing;widen=0;
+  document.getElementById('speed').value=data.recommended.speed_pct;
+  document.getElementById('speedtext').textContent=data.recommended.speed_pct+'%';
+  document.getElementById('crossing').checked=cross;
+  document.getElementById('width').value=0;document.getElementById('widthtext').textContent='0% visual shift';
+};
+document.getElementById('speed').value=data.recommended.speed_pct;
+document.getElementById('speedtext').textContent=data.recommended.speed_pct+'%';
+document.getElementById('crossing').checked=cross;
 document.getElementById('pause').onclick=()=>{playing=!playing;document.getElementById('pause').textContent=playing?'Pause':'Play';last=performance.now()};
 document.getElementById('restart').onclick=()=>{t=0;last=performance.now()};
 document.getElementById('seek').oninput=e=>{t=+e.target.value/1000*data.duration;last=performance.now()};
@@ -168,6 +179,7 @@ document.getElementById('reset').onclick=()=>{for(const s of groups){
 s.camera.position.copy(s.initialPosition);s.camera.quaternion.copy(s.initialQuaternion);
 s.camera.zoom=1;s.camera.updateProjectionMatrix();s.ctl.target.copy(s.initialTarget);s.ctl.update()}};
 new ResizeObserver(()=>{for(const s of groups){const w=Math.max(300,s.container.clientWidth);s.renderer.setSize(w,Math.round(w*H/W));if(metric){s.camera.aspect=W/H;s.camera.updateProjectionMatrix()}}}).observe(document.body);
+document.getElementById('detail').textContent+=' Suggested scenario from observed review rules: '+data.recommended.reason+'. ';
 document.getElementById('detail').textContent+=(metric?
  ' Metric road-plane texture and approximate camera pose enabled. Reprojection RMSE: '+metric.reprojection_rmse_px+' pixels.':
  ' Image-space alignment only; no surveyed ground geometry.')+
@@ -187,6 +199,13 @@ def render_reconstruction(job,snapshot):
     if not scene["tracks"]:
         st.warning("No stable track IDs were present; cannot replay an observed trajectory.")
         return
+    recs=suggestions(snapshot.get("evidence",{}))
+    kinds={r.get("id") for r in recs}
+    speed_pct=70 if "speed_review" in kinds else 100
+    crossing="crossing_review" in kinds
+    reason=("Speed management suggested for review. " if speed_pct<100 else "No speed reduction suggested by current flags. ")+("Pedestrian crossing suggested for site review." if crossing else "No crossing added automatically.")
+    scene["recommended"]={"speed_pct":speed_pct,"crossing":crossing,"reason":reason}
+    st.caption("**Automatically selected scenario:** "+reason+" Compare against the original; these are hypotheses and adjustable settings, not predicted improvements.")
     html=HTML.replace("__DATA__",json.dumps(scene,separators=(",",":")).replace("</","<\\/"))
     st.iframe(html,height=720,scrolling=False,alt="Interactive camera-aligned 3D vehicle trajectories with before and after sliders")
     with st.expander("What is measured versus inferred?"):
