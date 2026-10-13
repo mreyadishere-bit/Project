@@ -80,9 +80,9 @@ def show_results(job,snap):
             st.caption("Evidence status: "+r["confidence"]+" · Priority: "+r["priority"])
             st.caption("Check before construction: "+r["verify"])
 
-    st.markdown("### Original video vs proposed 3D changes")
-    st.caption("Left: your REAL original recording. Right: one modified 3D model. Both use the same video timeline, and vehicle ground-contact positions are projected using a source-matched perspective camera. The road geometry remains approximate.")
-    if st.button("Compare original video with modified 3D",type="primary",use_container_width=True,key="clean_sim_"+job.id):
+    st.markdown("### See what the AI observed — and explore improvements")
+    st.caption("Start with an accurate side-by-side VIDEO comparison: original footage on the left, the SAME video with evidence-based highlights or illustrative changes on the right. Switch to 3D inspection if you want to explore approximate geometry.")
+    if st.button("Compare footage and explore improvements",type="primary",use_container_width=True,key="clean_sim_"+job.id):
         st.session_state["clean_sim_active_"+job.id]=True
     if st.session_state.get("clean_sim_active_"+job.id):
         from road_compare3d import render_reconstruction
