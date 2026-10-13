@@ -1,28 +1,46 @@
-"""Streamlit video intelligence tab, usable on a Windows local machine."""
+"""Smart Road AI — premium video analysis workspace.
+
+Native controls for accessibility, evidence-first analytics, bounded live updates.
+"""
+from __future__ import annotations
+
+from html import escape
 from pathlib import Path
+import os
 import shutil
 import uuid
-import os
 
 import pandas as pd
 import streamlit as st
+
+from ui_theme import apply_theme
 from video_engine import VideoJob, VideoSettings, OUTPUTS
 
-
-STATUS_AR = {
-    "starting": "جاري البدء", "loading model": "تحميل نموذج AI", "running": "التحليل جارٍ",
-    "stopped": "أُوقف بناءً على طلبك", "completed": "اكتمل التحليل", "error": "خطأ",
+STATUS = {
+    "starting": ("Starting", "blue"),
+    "loading model": ("Loading AI model", "blue"),
+    "running": ("Analyzing", "green"),
+    "completed": ("Completed", "green"),
+    "stopped": ("Stopped", "amber"),
+    "error": ("Needs attention", "red"),
 }
+PRESETS = {
+    "Quick scan": ("yolo26n.pt", 2, 512),
+    "Balanced": ("yolo26n.pt", 5, 640),
+    "Deep analysis": ("yolo26s.pt", 10, 640),
+    "Custom": (None, None, None),
+}
+ALLOWED_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".m4v"}
 
 
 def save_uploaded_video(file):
+    """Copy the uploaded bytes to a unique local location, without buffering all in RAM."""
     folder = OUTPUTS / "uploads"
     folder.mkdir(parents=True, exist_ok=True)
-    extension = Path(file.name).suffix.lower()
-    if extension not in {".mp4", ".avi", ".mov", ".mkv", ".m4v"}:
-        raise ValueError("اختار ملف فيديو MP4 أو AVI أو MOV أو MKV")
-    name = f"{uuid.uuid4().hex}{extension}"
-    dest = folder / name
+    ext = Path(file.name).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise ValueError("Unsupported video format; use MP4, AVI, MOV, MKV or M4V.")
+    dest = folder / (uuid.uuid4().hex + ext)
     try:
         file.seek(0)
         with dest.open("wb") as output:
@@ -33,150 +51,376 @@ def save_uploaded_video(file):
     return dest
 
 
-def video_tab():
-    st.subheader("🎬 Video Intelligence — تحليل وتتبّع مباشر")
-    st.caption("حلّل فيديو لساعات، أو استخدم كاميرا اللابتوب في الوقت الفعلي. النتائج تظهر أثناء التحليل وتُحفظ محليًا.")
-    st.warning("⚠️ التحليل تجريبي. اتجاه الحركة اتجاه داخل الصورة فقط، والـ Track IDs قد تتغير عند اختفاء الأجسام. لا يوجد قياس سرعة حقيقية، كشف حفر، أو تنبؤ حوادث معتمد.")
+def section_header(title, subtitle=""):
+    st.markdown(
+        '<div class="sr-section-label"><h3>' + escape(title) +
+        '</h3><p>' + escape(subtitle) + '</p></div>',
+        unsafe_allow_html=True
+    )
 
-    hosted = os.environ.get("SMART_ROAD_HOSTED", "0") == "1"
-    if hosted:
-        st.info("🌐 النسخة المستضافة تدعم رفع الفيديو للتحليل. مسارات الهارد وكاميرا اللابتوب غير متاحة عبر سيرفر بعيد؛ البث من المتصفح يحتاج WebRTC وسنضيفه لاحقًا.")
-    current = st.session_state.get("video_job")
-    running = current is not None and current.snapshot()["status"] in {"starting", "loading model", "running"}
-    source_options = (["⬆️ رفع فيديو صغير/متوسط"] if hosted else [
-        "📁 ملف موجود على اللابتوب (مُفضّل للفيديوهات الكبيرة)",
-        "⬆️ رفع فيديو صغير/متوسط", "📷 كاميرا اللابتوب Live"])
-    source_mode = st.radio("مصدر الفيديو", source_options,
-                           horizontal=True, disabled=running, key="video_source_mode")
-    source: str | int | None = None
-    name = ""
-    uploaded = None
-    if source_mode.startswith("📁"):
-        path = st.text_input("المسار الكامل للفيديو على نفس الكمبيوتر المشغّل للموقع", placeholder=r"C:\Users\YourName\Videos\road.mp4", disabled=running,
-                             help='من File Explorer: Shift + Right Click على الفيديو ثم Copy as path والصق المسار هنا.')
-        source = path.strip().strip('"')
-        name = Path(source).name if source else ""
-        st.caption("هنا مفيش حد للرفع أصلًا: البرنامج بيقرأ الملف مباشرة من الهارد. تقدر تحلّل ساعات، حسب سرعة جهازك والمساحة المتاحة.")
-    elif source_mode.startswith("⬆️"):
-        uploaded = st.file_uploader("ارفع فيديو", type=["mp4", "avi", "mov", "mkv", "m4v"], key="advanced_video_upload", disabled=running)
-        if uploaded:
-            name = uploaded.name
-            st.caption(f"حجم الملف: {uploaded.size / 1024**2:.1f} MB. الفيديوهات الكبيرة جدًا: استخدم مسار الملف بدل الرفع لتقليل استهلاك الذاكرة.")
-    else:
-        source = int(st.selectbox("رقم الكاميرا", [0, 1, 2], disabled=running,
-                                 help="0 الكاميرا الأساسية. دي كاميرا اللابتوب اللي بيشغّل البرنامج، مش كاميرا الهاتف أو المتصفح على جهاز آخر."))
-        name = f"webcam-{source}"
-        st.caption("البث مباشر من كاميرا اللابتوب الموصولة بالبرنامج. جرّب رقم 1 لو 0 مش شغال. اقفل Zoom/Teams لو ماسكين الكاميرا.")
 
-    with st.expander("⚙️ إعدادات الدقة والأداء", expanded=not running):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            model = st.selectbox("حجم نموذج YOLO", ["yolo26n.pt", "yolo26s.pt", "yolo26m.pt"],
-                                 format_func=lambda v: {"yolo26n.pt": "Nano — أسرع", "yolo26s.pt": "Small — متوازن", "yolo26m.pt": "Medium — أثقل"}[v], disabled=running)
-            confidence = st.slider("أقل ثقة للكشف", 0.10, 0.90, 0.35, 0.05, disabled=running)
-        with c2:
-            fps = st.select_slider("عدد الإطارات المستهدفة في كل ثانية من الفيديو", [1, 2, 5, 10, 15, 30], value=5, disabled=running,
-                                   help="في الملف يتم تحليل إطار كل مدة تقريبية. كاميرا Live تعمل بأقصى سرعة تحليل ممكنة على جهازك.")
-            image_size = st.selectbox("حجم صورة AI", [416, 512, 640, 960], index=2, disabled=running)
-        with c3:
-            all_classes = st.checkbox("اكتشاف جميع أنواع YOLO (مش المرور فقط)", value=False, disabled=running)
-            export_video = st.checkbox("احفظ نسخة فيديو عليها المربعات (قد تكون ضخمة)", value=False,
-                                       disabled=running or source_mode.startswith("📷"))
-        st.caption("Nano و5 FPS هي البداية المناسبة لمعظم اللابتوبات. رفع FPS أو حجم النموذج هيزيد الدقة الزمنية المحتملة لكن هيبطّأ التحليل. البرنامج يقرأ الفيديو كله حتى لو بيحلل عينات منه.")
+def metric_cards(items):
+    blocks = []
+    for label, value, unit, style in items:
+        blocks.append(
+            '<div class="sr-metric ' + escape(style) + '">'
+            '<span class="sr-metric-kicker">' + escape(str(label)) + '</span>'
+            '<strong>' + escape(str(value)) + '</strong>'
+            '<span class="sr-metric-unit">' + escape(str(unit)) + '</span></div>'
+        )
+    st.markdown('<div class="sr-metric-grid">' + ''.join(blocks) + '</div>', unsafe_allow_html=True)
 
-    col_start, col_hint = st.columns([1, 2])
-    with col_start:
-        if st.button("▶️ ابدأ التحليل", type="primary", disabled=running, use_container_width=True):
+
+def brand(hosted, snap):
+    status = (snap or {}).get("status", "")
+    label, tone = STATUS.get(status, ("Research preview", "blue"))
+    st.markdown(
+        '<div class="sr-topbar"><div class="sr-brand">'
+        '<div class="sr-symbol"><svg width="24" height="24" viewBox="0 0 24 24" fill="none">'
+        '<path d="M7.5 19 10.4 5m6.1 14L13.6 5" stroke="white" stroke-width="2.2" stroke-linecap="round"/>'
+        '<path d="M12 7.3v2.2m0 3.5v3.8" stroke="#8bc7ff" stroke-width="2" stroke-linecap="round"/>'
+        '</svg></div><div class="sr-wordmark">Smart Road <span style="color:#3386eb">AI</span>'
+        '<small>ROAD INTELLIGENCE LAB</small></div></div>'
+        '<div class="sr-topright">'
+        '<span class="sr-topchip"><span class="sr-dot"></span>' + escape(label) + '</span>'
+        '<span class="sr-topchip">' + ("CLOUD / CPU" if hosted else "LOCAL WORKSPACE") + '</span>'
+        '<span class="sr-topchip">RESEARCH BUILD · V3</span>'
+        '</div></div>', unsafe_allow_html=True
+    )
+    st.markdown(
+        '<div class="sr-hero"><div>'
+        '<div class="sr-eyebrow">Vision intelligence / Scene diagnostics</div>'
+        '<h1>Understand the road.<br>Before risks escalate.</h1>'
+        '<p>Track traffic, inspect what the camera can actually observe, and turn long footage into clear, reviewable evidence. '
+        'مصمم لتحليل المشاهد المرورية بصورة منظمة وشفافة، مع عرض حدود دقة كل قياس.</p>'
+        '</div><div class="sr-hero-mini">'
+        '<div class="sr-mini-stat"><span>PRIMARY ANALYSIS</span><b>Detection + tracking</b></div>'
+        '<div class="sr-mini-stat"><span>PROCESSING</span><b>Frame by frame</b></div>'
+        '</div></div>', unsafe_allow_html=True
+    )
+
+
+def feature_tiles():
+    st.markdown(
+        '<div class="sr-tech-grid">'
+        '<div class="sr-tech"><span class="sr-tag green">AVAILABLE</span><b>Objects & trajectories</b>'
+        '<p>Cars, trucks, buses, people and tracked IDs with visible motion patterns.</p></div>'
+        '<div class="sr-tech"><span class="sr-tag green">EXPERIMENTAL</span><b>Scene diagnostics</b>'
+        '<p>Brightness, apparent crowding, image proximity, and pixel motion.</p></div>'
+        '<div class="sr-tech"><span class="sr-tag amber">REQUIRES SPECIALIZED AI</span><b>Road defects & near misses</b>'
+        '<p>True pothole models, calibrated distances and collision prediction are not enabled yet.</p></div>'
+        '</div>', unsafe_allow_html=True
+    )
+
+
+def source_and_settings(hosted: bool, running: bool):
+    """Draw inputs and return validated form selections without starting jobs."""
+    section_header("New analysis", "01 / Choose a source and processing profile")
+    with st.container(border=True):
+        if hosted:
+            source_mode = "Upload video"
+            st.markdown("**Video source**")
+            st.caption("Cloud analysis · Runs on the server CPU · Video upload limits apply.")
+        else:
+            source_mode = st.radio("Video source", ["Upload video", "Local file", "PC camera"],
+                                   horizontal=True, disabled=running, key="sr_source")
+        uploaded = None
+        source = None
+        label = ""
+        if source_mode == "Upload video":
+            uploaded = st.file_uploader(
+                "Drop your footage here", type=["mp4", "avi", "mov", "mkv", "m4v"],
+                disabled=running, key="sr_video_upload",
+                help="Supported: MP4, MOV, MKV, AVI, M4V. Cloud storage and computation are limited."
+            )
+            if uploaded:
+                label = uploaded.name
+                st.caption(f"Selected: {uploaded.name} · {uploaded.size / 1024**2:.1f} MB")
+        elif source_mode == "Local file":
+            value = st.text_input(
+                "Absolute file path on this computer", key="sr_local_path",
+                placeholder=r"C:\Users\You\Videos\road.mp4", disabled=running
+            )
+            source = value.strip().strip('"')
+            label = Path(source).name if source else ""
+            st.caption("Local files are streamed from disk, with no fixed one-minute limit.")
+        else:
+            source = int(st.selectbox("Connected camera", [0, 1, 2], disabled=running))
+            label = f"PC camera {source}"
+            st.caption("Captures the camera attached to the computer hosting this Python process.")
+
+        st.markdown("**Analysis profile**")
+        preset = st.radio("Choose performance", list(PRESETS), horizontal=True,
+                          label_visibility="collapsed", key="sr_preset", disabled=running)
+        model, fps, image_size = PRESETS[preset]
+        with st.expander("Fine-tune detection & export", expanded=(preset == "Custom" and not running)):
+            c1, c2 = st.columns(2)
+            with c1:
+                if preset == "Custom":
+                    model = st.selectbox("Detection model", ["yolo26n.pt", "yolo26s.pt", "yolo26m.pt"],
+                                         disabled=running)
+                    fps = st.select_slider("Frames analyzed / video second", [1, 2, 5, 10, 15, 30],
+                                           value=5, disabled=running)
+                    image_size = st.selectbox("Inference image size", [416, 512, 640, 960],
+                                              index=2, disabled=running)
+                confidence = st.slider("Minimum confidence", .1, .9, .35, .05, disabled=running)
+            with c2:
+                all_classes = st.checkbox("Detect all supported YOLO classes", value=False, disabled=running)
+                save_video = st.checkbox("Export annotated video", value=False, disabled=running or source_mode == "PC camera")
+                if save_video:
+                    st.caption("Uses significant disk space on long recordings.")
+        with st.expander("Speed calibration (optional, research only)"):
+            calibrate = st.checkbox("I have a measured metres-per-pixel scale for this camera",
+                                    disabled=running, key="sr_calibrate")
+            meters_per_pixel = None
+            if calibrate:
+                meters_per_pixel = st.number_input(
+                    "Approximate metres per image pixel", min_value=0.0001, max_value=100.0,
+                    value=0.025, step=0.005, format="%.4f", disabled=running
+                )
+                st.warning("A constant scale cannot correct perspective. The km/h values are rough estimates near the calibration region, not radar speeds or legal evidence.")
+            else:
+                st.caption("Without calibration, motion is shown in pixels/second. The system will NOT invent real-world vehicle speeds.")
+
+        start = st.button("Start analyzing  →", type="primary", disabled=running,
+                          use_container_width=True, key="sr_start")
+        if start:
             try:
-                if source_mode.startswith("📁"):
-                    if not source or not Path(source).is_file():
-                        raise ValueError("المسار غلط أو الملف مش موجود. استخدم Copy as path من مستكشف الملفات.")
-                    if Path(source).suffix.lower() not in {".mp4", ".mov", ".avi", ".mkv", ".m4v"}:
-                        raise ValueError("صيغة غير مدعومة. جرّب MP4.")
-                    actual_source = str(Path(source).resolve())
-                elif source_mode.startswith("⬆️"):
+                if source_mode == "Upload video":
                     if uploaded is None:
-                        raise ValueError("اختار فيديو أولًا.")
-                    with st.spinner("جاري نسخ الملف للتخزين المحلي..."):
-                        actual_source = str(save_uploaded_video(uploaded))
+                        raise ValueError("Upload a video first.")
+                    with st.spinner("Preparing video..."):
+                        actual = str(save_uploaded_video(uploaded))
+                elif source_mode == "Local file":
+                    if not source or not Path(source).is_file():
+                        raise ValueError("Choose a valid local video path.")
+                    if Path(source).suffix.lower() not in ALLOWED_EXTENSIONS:
+                        raise ValueError("Unsupported video file extension.")
+                    actual = str(Path(source).resolve())
                 else:
-                    actual_source = source
-                settings = VideoSettings(model_name=model, confidence=confidence,
-                                         image_size=image_size, analysis_fps=fps,
-                                         all_classes=all_classes,
-                                         save_video=bool(export_video and not isinstance(actual_source, int)))
-                st.session_state["video_job"] = VideoJob(actual_source, settings, label=name)
+                    actual = source
+                st.session_state["video_job"] = VideoJob(
+                    actual, VideoSettings(
+                        model_name=model, confidence=confidence, image_size=image_size,
+                        analysis_fps=fps, all_classes=all_classes,
+                        save_video=bool(save_video and not isinstance(actual, int)),
+                        meters_per_pixel=meters_per_pixel
+                    ), label=label
+                )
                 st.rerun()
-            except Exception as e:
-                st.error(f"تعذر البدء: {e}")
-    with col_hint:
-        if not running:
-            st.caption("ابدأ ملفًا جديدًا بعد اكتمال التحليل أو إيقاف التشغيل السابق. لا تقفل البرنامج أثناء التشغيل.")
-        else:
-            st.caption("التحليل شغّال في الخلفية. تقدر تتابع العرض أو تضغط إيقاف، وتصدّر النتائج بعد الإنهاء.")
+            except Exception as exc:
+                st.error(f"Could not start: {exc}")
 
-    # fragment polls state without blocking the Streamlit UI; built-in since 1.37.
-    @st.fragment(run_every=1.0 if running else None)
-    def live_results():
-        job = st.session_state.get("video_job")
-        if job is None:
-            st.info("اختار فيديو أو الكاميرا، واضغط ابدأ التحليل.")
-            return
-        snap = job.snapshot()
-        st.divider()
-        left, middle, right = st.columns([2, 1, 1])
-        left.markdown(f"**الحالة:** {STATUS_AR.get(snap['status'], snap['status'])}  |  **المصدر:** {snap['label']}")
-        middle.caption(f"المعالجة: {snap['device']}")
-        right.caption(f"مجلد النتائج: outputs/{job.id}")
-        if snap["error"]:
-            st.error(snap["error"])
-        if not snap["is_camera"]:
-            if snap["duration_seconds"]:
-                fraction = min(1.0, snap["frames_read"] / snap["total_frames"]) if snap["total_frames"] else min(1.0, snap["video_second"] / snap["duration_seconds"])
-                st.progress(fraction, text=f"وصل إلى {snap['video_second'] / 60:.1f} من {snap['duration_seconds'] / 60:.1f} دقيقة — {fraction:.1%}")
-            elif snap["analyzed_frames"]:
-                st.caption(f"مدة الفيديو غير معروفة؛ تم تحليل حتى الثانية {snap['video_second']:.1f}")
-        a,b,c,d = st.columns(4)
-        counts = snap["detected_now"]
-        a.metric("مركبات في آخر إطار", counts.get("vehicles", 0))
-        b.metric("أشخاص في آخر إطار", counts.get("people", 0))
-        c.metric("معرفات مسارات ظهرت", snap["unique_tracks"])
-        d.metric("إطارات محللة / ثانية تشغيل", f"{snap['processing_fps']:.1f}")
-        st.caption(f"تم تحليل {snap['analyzed_frames']:,} إطارًا | أقصى مركبات في إطار: {snap['max_vehicles']} | أقصى أشخاص في إطار: {snap['max_people']}. معرفات المسارات تقديرية وقد يتغير ID لنفس الشخص أو السيارة.")
-        if snap["preview_jpeg"]:
-            st.image(snap["preview_jpeg"], caption=f"أحدث إطار محلل — عند {snap['video_second']:.1f} ثانية من المصدر", use_container_width=True)
-        else:
-            st.info("في انتظار أول إطار... تنزيل نموذج YOLO أول مرة قد يستغرق وقتًا.")
-        if snap["status"] in {"starting", "loading model", "running"}:
-            control1, control2 = st.columns(2)
-            if not snap["is_camera"]:
-                with control1:
-                    if st.button("▶️ استكمال" if snap["paused"] else "⏸️ إيقاف مؤقت", key="pause_video_btn", use_container_width=True):
-                        job.resume() if snap["paused"] else job.pause()
+
+def video_stage(snap, job):
+    section_header("Live visual analysis", "02 / Current sampled frame & processing status")
+    left, right = st.columns([1.8, 1], gap="medium")
+    with left:
+        with st.container(border=True):
+            if snap and snap.get("preview_jpeg"):
+                st.image(snap["preview_jpeg"], use_container_width=True)
+                st.caption(f"Last analyzed frame · {snap['video_second']:.1f}s in source · Object overlays are model estimates.")
+            else:
+                st.markdown(
+                    '<div class="sr-empty"><div class="sr-empty-icon">⌁</div>'
+                    '<strong>Your scene starts here</strong>'
+                    '<p>Upload footage and start an analysis to see tracked objects, live counts and observed scene conditions.</p>'
+                    '</div>', unsafe_allow_html=True
+                )
+    with right:
+        with st.container(border=True):
+            if not snap:
+                st.markdown("**Session readiness**")
+                st.markdown('<span class="sr-tag blue">WAITING FOR A VIDEO</span>', unsafe_allow_html=True)
+                st.caption("Nothing has been processed yet. Start with a 1–3 minute clip to verify the pipeline.")
+            else:
+                label, tone = STATUS.get(snap["status"], ("Research", "blue"))
+                st.markdown(f"**Processing status**")
+                st.markdown('<span class="sr-tag ' + tone + '">' + escape(label.upper()) + '</span>', unsafe_allow_html=True)
+                st.caption(f"Source: {snap['label']}")
+                st.caption(f"Compute: {snap['device']}")
+                st.caption(f"Analyzed frames: {snap['analyzed_frames']:,}")
+                st.caption(f"Processing throughput: {snap['processing_fps']:.1f} fps")
+                if snap["duration_seconds"] > 0:
+                    fraction = min(1., snap["frames_read"]/snap["total_frames"]) if snap["total_frames"] else min(1.,snap["video_second"]/snap["duration_seconds"])
+                    st.progress(fraction, text=f"{fraction:.0%} of video · {snap['video_second']/60:.1f}/{snap['duration_seconds']/60:.1f} min")
+                elif snap["analyzed_frames"]:
+                    st.caption(f"Observed video timestamp: {snap['video_second']:.1f}s")
+                if snap["error"]:
+                    st.error(snap["error"])
+                if snap["status"] in {"starting", "loading model", "running"}:
+                    if not snap["is_camera"]:
+                        if st.button("Resume" if snap["paused"] else "Pause", use_container_width=True, key="sr_pause"):
+                            job.resume() if snap["paused"] else job.pause()
+                            st.rerun(scope="fragment")
+                    if st.button("Stop analysis", use_container_width=True, key="sr_stop"):
+                        job.stop()
                         st.rerun(scope="fragment")
-            with control2:
-                if st.button("⏹️ إيقاف التحليل", key="stop_video_btn", use_container_width=True):
-                    job.stop()
-                    st.rerun(scope="fragment")
-        if snap["recent_frames"]:
-            st.markdown("**📈 الأجسام المكتشفة عبر الزمن (آخر 180 إطارًا محللًا)**")
-            df = pd.DataFrame(snap["recent_frames"])
-            st.line_chart(df.set_index("video_second")[["vehicles", "people", "traffic_lights", "stop_signs"]])
-        if snap["recent_objects"]:
-            st.markdown("**🔎 التفاصيل لكل جسم (آخر 80 عملية رصد)**")
-            st.dataframe(pd.DataFrame(snap["recent_objects"])[["video_second", "track_id", "class", "confidence", "center_x", "center_y", "direction"]].iloc[::-1],
-                         use_container_width=True, hide_index=True)
-        if snap["status"] in {"completed", "stopped", "error"}:
-            st.markdown("**📂 ملفات النتيجة محفوظة على جهازك**")
-            for file_path, label in [(job.summary_file, "إحصاءات كل إطار"), (job.objects_file, "تفاصيل كل جسم"), (job.video_file, "الفيديو الناتج")]:
-                if file_path.is_file() and file_path.stat().st_size > 0:
-                    mb = file_path.stat().st_size / (1024 * 1024)
-                    st.write(f"{label}: `{file_path}` ({mb:.1f} MB)")
-                    if mb <= 25:
-                        st.download_button(f"⬇️ تحميل {label}", data=file_path.read_bytes(), file_name=f"{job.id}_{file_path.name}",
-                                           mime="video/mp4" if file_path.suffix == ".mp4" else "text/csv", key=f"dl_{job.id}_{file_path.name}")
-                    else:
-                        st.caption("الملف كبير؛ افتحه من المسار على جهازك بدل تحميله من المتصفح.")
-            st.caption("كله محلي، لا يوجد رفع إلى سحابة. ملفات outputs لا تُحذف تلقائيًا؛ احذف النتائج القديمة بنفسك لتوفير المساحة.")
+                if snap["status"] == "loading model":
+                    st.info("First launch may download the YOLO model. Keep this page open.")
+    st.markdown('<div class="sr-footnote">Live = results update while processing. Processing FPS may be slower than the original video frame rate on CPU hardware.</div>', unsafe_allow_html=True)
 
-    live_results()
+
+def live_metrics(snap):
+    section_header("Scene at a glance", "03 / Live observations, not predicted accidents")
+    counts = snap.get("detected_now", {}) if snap else {}
+    scene = snap.get("scene", {}) if snap else {}
+    metric_cards([
+        ("Vehicles in current frame", counts.get("vehicles", 0), "objects", ""),
+        ("Pedestrians in current frame", counts.get("people", 0), "objects", ""),
+        ("Track IDs observed", snap.get("unique_tracks", 0) if snap else 0, "IDs", ""),
+        ("Apparent motion", f"{snap.get('mean_apparent_speed', 0):.1f}" if snap else "—", "px/s", ""),
+        ("Image brightness", f"{scene.get('brightness', 0):.0f}" if scene else "—", "0–255", ""),
+        ("Image occupancy", f"{scene.get('occupancy_ratio',0)*100:.0f}%" if scene else "—", "box area*", ""),
+        ("Visual proximity flags", snap.get("total_events", 0) if snap else 0, "all events**", "warn" if snap and snap.get("total_events") else ""),
+        ("Calibrated speed", f"{snap.get('mean_calibrated_speed',0):.1f}" if snap and snap.get("calibrated_speed_samples") else "—", "km/h est.", ""),
+    ])
+    st.markdown(
+        '<div class="sr-footnote">* Overlapping detection boxes can inflate occupancy. '
+        '** The event count includes brightness and crowding observations, not verified near misses. '
+        'Speed is an approximate image-scale estimate only when manual calibration is supplied.</div>',
+        unsafe_allow_html=True
+    )
+
+
+def intelligence_view(snap):
+    section_header("Scene intelligence", "Signals grounded in recorded frames")
+    feature_tiles()
+    if snap is None or not snap.get("recent_frames"):
+        st.info("Run an analysis to populate charts and diagnostics. Models for potholes, road-surface damage, water, and verified collision risk require specialized training and calibration.")
+        return
+    frames = pd.DataFrame(snap["recent_frames"])
+    left, right = st.columns([1.4, 1], gap="medium")
+    with left:
+        with st.container(border=True):
+            st.markdown("**Traffic observation timeline**")
+            st.line_chart(frames.set_index("video_second")[["vehicles", "people", "traffic_lights", "stop_signs"]],
+                          height=270)
+            st.caption("Current objects per sampled frame. These are not unique cumulative traffic counts.")
+    with right:
+        with st.container(border=True):
+            st.markdown("**Current image diagnostics**")
+            diag = snap.get("scene", {})
+            c1, c2 = st.columns(2)
+            c1.metric("Brightness /255", diag.get("brightness", "—"))
+            c2.metric("Box area / frame", f"{diag.get('occupancy_ratio', 0)*100:.0f}%")
+            st.caption("Brightness uses raw image pixels; not a lux meter or certified visibility rating.")
+            st.caption("Crowded-image warning: " + ("Yes · heuristic" if diag.get("dense_scene") else "Not triggered"))
+            st.caption("Close person/vehicle in image: " + str(diag.get("visual_proximity_pairs", 0)) + " pair(s)")
+    section_header("Tracked objects", "Most recent 80 detections, with per-object evidence")
+    if snap.get("recent_objects"):
+        df = pd.DataFrame(snap["recent_objects"]).iloc[::-1]
+        selected = ["video_second", "track_id", "class", "confidence", "direction", "image_motion_px_s", "calibrated_speed_kmh"]
+        available = [c for c in selected if c in df.columns]
+        st.dataframe(df[available], hide_index=True, use_container_width=True,
+                     column_config={
+                         "video_second": st.column_config.NumberColumn("Time (s)", format="%.1f"),
+                         "track_id": "Track ID",
+                         "class": "Object",
+                         "confidence": st.column_config.NumberColumn("Confidence", format="%.2f"),
+                         "direction": "Screen direction",
+                         "image_motion_px_s": st.column_config.NumberColumn("Motion (px/s)", format="%.1f"),
+                         "calibrated_speed_kmh": st.column_config.NumberColumn("Speed estimate (km/h)", format="%.1f"),
+                     })
+        st.caption("A tracked ID may change after occlusion. Screen direction and pixel motion must not be interpreted as actual road heading or speed.")
+    else:
+        st.caption("No tracked objects recorded yet.")
+
+
+def events_view(snap):
+    section_header("Evidence timeline", "Observed conditions; not automated accident claims")
+    if snap is None or not snap.get("recent_events"):
+        st.markdown('<div class="sr-empty" style="min-height:190px"><div class="sr-empty-icon">✓</div>'
+                    '<strong>No diagnostic events yet</strong><p>Only specific experimental heuristics are recorded. '
+                    'No event does not mean the road is safe.</p></div>', unsafe_allow_html=True)
+        return
+    for e in reversed(snap["recent_events"][-30:]):
+        glyph = "○" if e["level"] == "observe" else "!"
+        st.markdown(
+            '<div class="sr-event"><div class="sr-event-icon">' + glyph + '</div>'
+            '<div><strong>' + escape(e["title"]) + '</strong><p>' +
+            escape(e["description"]) + '</p></div><time>' +
+            f'{e["video_second"]:.1f}s' + '</time></div>', unsafe_allow_html=True
+        )
+
+
+def exports_view(job, snap, hosted):
+    section_header("Reports & exports", "Download machine-readable evidence after the run")
+    if job is None:
+        st.info("Analyze a video first. Frame-level observations and diagnostic events are written incrementally to CSV.")
+        return
+    if snap["status"] in {"running", "starting", "loading model"}:
+        st.info("Files are being written. Stop or finish the job before downloading a complete result.")
+        return
+    if snap["status"] == "error":
+        st.warning("The session encountered an error. Any partial CSV files are unverified.")
+    files = [
+        (job.summary_file, "Frame observations", "video-frame-counts.csv"),
+        (job.objects_file, "Object trajectories and motion", "object-observations.csv"),
+        (job.events_file, "Image-scene diagnostic events", "scene-events.csv"),
+        (job.video_file, "Annotated video", "tracked-video.mp4")
+    ]
+    for path, label, basename in files:
+        if not path.exists() or not path.stat().st_size:
+            continue
+        mb = path.stat().st_size / (1024 * 1024)
+        with st.container(border=True):
+            c1, c2 = st.columns([3, 1])
+            with c1:
+                st.markdown("**" + label + "**")
+                st.caption(f"{path.name} · {mb:.2f} MB")
+            with c2:
+                if mb <= 35:
+                    st.download_button("Download ↓", path.read_bytes(), file_name=basename,
+                                       mime="video/mp4" if path.suffix == ".mp4" else "text/csv",
+                                       use_container_width=True, key="sr_download_" + path.name)
+                else:
+                    st.caption("Large file; use local processing for reliable exports.")
+    st.caption("Cloud results live temporarily on the remote app instance, not your PC. Download your data promptly; it may disappear when the server restarts." if hosted else "Local results are saved under outputs/ and are not automatically cleaned up.")
+
+
+def video_tab():
+    apply_theme()
+    hosted = os.environ.get("SMART_ROAD_HOSTED", "0") == "1"
+    job = st.session_state.get("video_job")
+    snap = job.snapshot() if job else None
+    active = bool(snap and snap["status"] in {"starting", "loading model", "running"})
+    brand(hosted, snap)
+    if hosted:
+        st.caption("CLOUD RESEARCH PREVIEW · Shared server, no accounts or privacy guarantees. Upload only non-sensitive, permitted video. Long jobs can be interrupted by hosting limits.")
+    else:
+        st.caption("LOCAL RESEARCH WORKSPACE · For long recordings or connected PC cameras, use this locally with sufficient storage.")
+
+    pages = ["Workspace", "Intelligence", "Events & reports"]
+    selection = st.radio("Section", pages, horizontal=True, key="sr_main_tab",
+                         label_visibility="collapsed")
+    if selection == "Workspace":
+        if not active:
+            source_and_settings(hosted, active)
+        else:
+            st.markdown('<span class="sr-tag blue">SESSION IN PROGRESS · SOURCE SETTINGS LOCKED</span>', unsafe_allow_html=True)
+
+        @st.fragment(run_every=1.0 if active else None)
+        def monitor():
+            current = st.session_state.get("video_job")
+            state = current.snapshot() if current else None
+            video_stage(state, current)
+            live_metrics(state)
+
+        monitor()
+    elif selection == "Intelligence":
+        @st.fragment(run_every=1.5 if active else None)
+        def intelligence_monitor():
+            current = st.session_state.get("video_job")
+            intelligence_view(current.snapshot() if current else None)
+        intelligence_monitor()
+    else:
+        @st.fragment(run_every=2.0 if active else None)
+        def reporting_monitor():
+            current = st.session_state.get("video_job")
+            current_state = current.snapshot() if current else None
+            events_view(current_state)
+            exports_view(current, current_state, hosted)
+        reporting_monitor()
+    st.divider()
+    st.caption("SMART ROAD AI · Research prototype · Pixel-based findings are provisional. Do not use these results as real-time driving alerts, speed enforcement, or verified collision predictions.")
