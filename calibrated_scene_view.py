@@ -353,5 +353,29 @@ def show_surveyed_scene(job,snapshot,calibration,fov_deg):
     html=HTML.replace("__VIDEO__",escape(source_uri or "",quote=True)).replace(
       "__DATA__",json.dumps(scene,separators=(",",":")).replace("</","<\\/"))
     st.components.v1.html(html,height=535,scrolling=False)
+    if scene["control_scenario"]:
+        st.markdown("**What changes in the hypothetical intervention?**")
+        st.write("A marked pedestrian crossing and phased traffic control are overlaid on "
+                 "your surveyed road patch. Vehicles stop for the pedestrian WALK interval, "
+                 "people cross, and vehicles resume when the controller returns to green. "
+                 "This is a design EXPERIMENT, not a verified requirement at the filmed location.")
+        before=sim["baseline"]["metrics"]
+        after=sim["managed"]["metrics"]
+        cols=st.columns(3)
+        for col,label,key,unit in (
+            (cols[0],"Pedestrian wait","mean_pedestrian_wait_s","s"),
+            (cols[1],"Vehicle travel time","mean_vehicle_travel_s","s"),
+            (cols[2],"Peak stopped queue","max_waiting_vehicles","cars"),
+        ):
+            previous=before.get(key)
+            current=after.get(key)
+            def display(value):
+                return "N/A" if value is None else f"{value:g} {unit}"
+            col.metric(label,display(current),help="Model-only outcome, NOT measured road performance.")
+            col.caption("Uncontrolled concept: "+display(previous))
+        st.caption("Both scenarios use equal SEEDED ASSUMED demand and simplified two-dimensional "
+                   "traffic rules. The 3D camera/road surface comes from your survey; "
+                   "model traffic demand, signal timing and safety outcomes are not reconstructed "
+                   "from the original video or validated for construction.")
     if not source_uri:
         st.caption(status+" The full original video is available in the analyzed-video results above.")
