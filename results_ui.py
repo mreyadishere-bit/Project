@@ -51,7 +51,7 @@ def _numbers(snap):
         ("Close-image frames", f"{rates['close_in_image']:.1f}%", "Not real distance"),
         ("Dark-image frames", f"{rates['dark_image']:.1f}%", "Camera exposure matters"),
     ]
-    html = '<div class="sr-metric-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">'
+    html = '<div class="sr-metric-grid sr-metric-six">'
     for name,value,unit in sections:
         html += (f'<div class="sr-metric"><span class="sr-metric-kicker">{escape(name)}</span>'
                  f'<strong>{escape(value)}</strong>'
