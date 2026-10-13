@@ -149,6 +149,10 @@ try {
  sourceCamera.position.set(0,29,-38);
  sourceCamera.lookAt(-7,0,52);
  sourceCamera.updateProjectionMatrix();
+ // Raycaster.setFromCamera reads camera.matrixWorld. lookAt() changes the
+ // quaternion but DOES NOT refresh matrixWorld until an update/render.
+ // This camera is never rendered directly, so the explicit refresh is vital.
+ sourceCamera.updateMatrixWorld(true);
  camera.position.copy(sourceCamera.position);
  camera.quaternion.copy(sourceCamera.quaternion);
  controls.target.set(-7,0,52);controls.update();
