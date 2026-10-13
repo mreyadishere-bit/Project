@@ -107,11 +107,14 @@ try{
    const mesh=new THREE.Mesh(g,m);mesh.position.set(x,y,z);mesh.castShadow=true;mesh.receiveShadow=true;
    parent.add(mesh);return mesh;
  }
+ const laneCenters=D.inputs.lanes===1?[0]:D.inputs.lanes===2?[-2.2,2.2]:[-4,0,4];
+ const laneBoundaries=laneCenters.slice(1).map((v,i)=>(v+laneCenters[i])/2);
  const ground=obj(new THREE.BoxGeometry(220,.4,70),grass,0,-.35,0);
  obj(new THREE.BoxGeometry(155,.1,14),gray,0,.02,0);
  for(const z of [-9,9])obj(new THREE.BoxGeometry(155,.28,4),sidewalk,0,.1,z);
  for(const x of [-66,-56,-46,-36,-26,-16,14,24,34,44,54,64])
-   obj(new THREE.BoxGeometry(4,.04,.11),white,x,.10,0);
+   for(const z of laneBoundaries)
+     obj(new THREE.BoxGeometry(4,.04,.11),white,x,.10,z);
  // Zebra crossing perpendicular to the vehicle travel direction.
  for(let z=-5.75;z<=5.75;z+=1.15)
    obj(new THREE.BoxGeometry(5.2,.06,.66),white,0,.13,z);
@@ -163,7 +166,7 @@ try{
    for(const [id,x,lane,speed] of f.cars){
      let body=carObjects.get(id);
      if(!body){body=carMesh(id,lane);carObjects.set(id,body)}
-     body.visible=true;body.position.set(x,0,lane===0?-2.2:2.2);
+     body.visible=true;body.position.set(x,0,laneCenters[lane]??0);
      seenCars.add(id);
    }
    for(const [id,y,status] of f.people){
@@ -262,12 +265,13 @@ def show_concept(job, snapshot, interaction_candidates, *, key="traffic_control"
         speed=c1.slider("Approach speed assumption (km/h)",10,70,36,key=key+"_speed")
         cars=c2.slider("Vehicle arrivals / hour",0,1200,600,step=60,key=key+"_cars")
         peds=c3.slider("Pedestrian arrivals / hour",0,600,240,step=30,key=key+"_peds")
+        lanes=st.slider("Illustrative approach lanes (same one-way direction)",1,3,2,key=key+"_lanes")
         a,b,c=st.columns(3)
         green=a.slider("Vehicle green (seconds)",20,70,36,key=key+"_green")
         walk=b.slider("Pedestrian WALK (seconds)",12,30,16,key=key+"_walk")
         clear=c.slider("Pedestrian clearance (seconds)",10,30,12,key=key+"_clear")
     inputs=ControlInputs(speed_kmh=speed,vehicles_per_hour=cars,pedestrians_per_hour=peds,
-                         green_s=green,walk_s=walk,clearance_s=clear)
+                         lanes=lanes,green_s=green,walk_s=walk,clearance_s=clear)
     model=cached_simulation(inputs)
     st.session_state[key+"_results"]=model
     with st.spinner("Preparing real source video for 3D comparison…"):
