@@ -26,7 +26,7 @@ jobs:
       - name: Smoke test ByteTrack assignment dependency
         run: python -c "import lap, numpy as np; cost, rows, cols = lap.lapjv(np.array([[0.0, 1.0], [1.0, 0.0]])); assert list(rows) == [0, 1]"
       - name: Compile Python
-        run: python -m compileall -q app.py video_ui.py results_ui.py reconstruction_ui.py reconstruction.py traffic_geometry.py metric_scene.py traffic_metrics.py simulation_ui.py simulation_engine.py insight_engine.py ui_theme.py video_engine.py scene_intelligence.py road_tracking.py road_advice.py road_world3d.py model_runtime.py simple_workspace.py simple_results.py stable_scene.py live_sources.py live_decoder.py public_cameras.py analysis.py database.py receiver.py routes.py weather.py
+        run: python -m compileall -q app.py video_ui.py results_ui.py reconstruction_ui.py reconstruction.py traffic_geometry.py metric_scene.py traffic_metrics.py simulation_ui.py simulation_engine.py insight_engine.py ui_theme.py video_engine.py scene_intelligence.py road_tracking.py road_advice.py road_world3d.py road_compare3d.py video_comparison.py model_runtime.py simple_workspace.py simple_results.py stable_scene.py live_sources.py live_decoder.py public_cameras.py analysis.py database.py receiver.py routes.py weather.py
       - name: Run tests
         run: python -m unittest discover -s tests -v
       - name: Smoke-test redesigned zero-settings hosted UI
