@@ -71,6 +71,10 @@ def show_results(job,snap):
         getattr(job,"objects_file",None),
         snap.get("frame_width",0),snap.get("frame_height",0)
     )
+    from road_scenarios import candidate_site_review
+    interaction_study=candidate_site_review(interaction_events,evidence)
+    if interaction_study:
+        story["recommendations"].insert(0,interaction_study)
     st.markdown("### Events worth reviewing")
     if interaction_events:
         st.write(f"{len(interaction_events)} time-localized pedestrian/vehicle review candidate(s). These are image-plane proximity observations — NOT confirmed accidents, near misses, or unauthorized crossings.")
