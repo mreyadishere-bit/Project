@@ -250,6 +250,7 @@ def show_concept(job, snapshot, interaction_candidates, *, key="traffic_control"
     inputs=ControlInputs(speed_kmh=speed,vehicles_per_hour=cars,pedestrians_per_hour=peds,
                          green_s=green,walk_s=walk,clearance_s=clear)
     model=cached_simulation(inputs)
+    st.session_state[key+"_results"]=model
     with st.spinner("Preparing real source video for 3D comparison…"):
         uri,source_status=prepare_source_video(job)
     html=VIEW_HTML.replace("__SOURCE__",escape(uri or "",quote=True)).replace(
