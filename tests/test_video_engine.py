@@ -112,6 +112,36 @@ class VideoTests(unittest.TestCase):
             finally:
                 video_engine.OUTPUTS = old
 
+    def test_annotated_video_and_full_evidence_export(self):
+        import shutil
+        if not shutil.which("ffmpeg"):
+            self.skipTest("FFmpeg missing")
+        import video_engine
+        with tempfile.TemporaryDirectory() as td:
+            old = video_engine.OUTPUTS
+            video_engine.OUTPUTS = Path(td) / "outputs"
+            try:
+                clip=Path(td)/"record.avi"
+                create_video(clip,frames=25,fps=5)
+                fake=types.ModuleType("ultralytics")
+                fake.YOLO=FakeYOLO
+                with patch.dict(sys.modules, {"ultralytics":fake,"torch":fake_torch}):
+                    job=VideoJob(str(clip),VideoSettings(analysis_fps=5,save_video=True),label="annotated")
+                    job._thread.join(timeout=40)
+                snap=job.snapshot()
+                self.assertEqual(snap["status"],"completed",snap["error"])
+                self.assertEqual(snap["evidence"]["analyzed_frames"],snap["analyzed_frames"])
+                self.assertEqual(snap["evidence"]["unique_track_ids_by_class"]["car"],1)
+                self.assertTrue(snap["video_ready"],snap["video_export_error"])
+                self.assertGreater(job.video_file.stat().st_size,250)
+                video=cv2.VideoCapture(str(job.video_file))
+                self.assertTrue(video.isOpened())
+                frames=video.get(cv2.CAP_PROP_FRAME_COUNT)
+                video.release()
+                self.assertGreaterEqual(frames,20)
+            finally:
+                video_engine.OUTPUTS=old
+
     def test_camera_open_failure_is_reported(self):
         from video_engine import OUTPUTS
         import video_engine
