@@ -133,6 +133,7 @@ class VideoSettings:
     count_line_fraction: float = .50
     tracker: str = "traffic_botsort.yaml"
     use_openvino: bool = False
+    roi_rect: tuple[float,float,float,float] | None = None  # full video fractions (left, top, right, bottom)
 
 
 class VideoJob:
@@ -146,6 +147,10 @@ class VideoJob:
             raise ValueError("Invalid analysis rate")
         if not 30 <= settings.camera_fov_deg <= 120:
             raise ValueError("Camera FOV outside supported range")
+        if settings.roi_rect is not None:
+            x0,y0,x1,y1=settings.roi_rect
+            if not (0<=x0<x1<=1 and 0<=y0<y1<=1 and x1-x0>=.18 and y1-y0>=.18):
+                raise ValueError("Road detection focus rectangle is invalid.")
         if settings.tracker not in {"botsort.yaml", "bytetrack.yaml", "traffic_botsort.yaml"}:
             raise ValueError("Invalid tracker")
         if not .05 <= settings.count_line_fraction <= .95:
@@ -271,6 +276,7 @@ class VideoJob:
                 "effective_sample_fps": self.effective_sample_fps,
                 "requested_sample_fps": self.settings.analysis_fps,
                 "model_name": self.settings.model_name,
+                "detection_roi": self.settings.roi_rect,
                 "inference_backend": getattr(self, "inference_backend", "PyTorch"),
                 "scene": dict(self.scene), "recent_events": list(self.recent_events),
                 "total_events": self.total_events, "mean_apparent_speed": self.mean_apparent_speed,
@@ -419,9 +425,18 @@ class VideoJob:
                     if self.frame_width == 0:
                         self.frame_width, self.frame_height = frame.shape[1], frame.shape[0]
                         cv2.imwrite(str(self.reference_frame_file),frame,[cv2.IMWRITE_JPEG_QUALITY,82])
+                    roi_frame=frame
+                    x_offset=y_offset=0
+                    if self.settings.roi_rect is not None:
+                        H,W=frame.shape[:2]
+                        left,top,right,bottom=self.settings.roi_rect
+                        x_offset=int(left*W)
+                        y_offset=int(top*H)
+                        roi_frame=frame[y_offset:max(y_offset+2,int(bottom*H)),
+                                        x_offset:max(x_offset+2,int(right*W))]
                     started_inference = time.monotonic()
                     tracker_config = str(BASE / "traffic_botsort.yaml") if self.settings.tracker == "traffic_botsort.yaml" else self.settings.tracker
-                    tracked = model.track(frame, persist=True, tracker=tracker_config, classes=class_ids,
+                    tracked = model.track(roi_frame, persist=True, tracker=tracker_config, classes=class_ids,
                                           imgsz=self.settings.image_size, conf=self.settings.confidence,
                                           device=device, verbose=False)[0]
                     inference_ms = (time.monotonic()-started_inference)*1000
@@ -437,6 +452,10 @@ class VideoJob:
                         for bounds, confidence, cls_id, track_id in zip(xyxy, probs, cls_ids, ids):
                             class_name = tracked.names[cls_id]
                             x1, y1, x2, y2 = [round(float(v), 1) for v in bounds]
+                            # Tracker sees the crop, but all downstream data and
+                            # the full original video remain in SOURCE coordinates.
+                            x1+=x_offset; x2+=x_offset
+                            y1+=y_offset; y2+=y_offset
                             center = ((x1 + x2) / 2, (y1 + y2) / 2)
                             direction = motion_direction(previous_points.get(track_id), center) if track_id is not None else "untracked"
                             image_px_s, calibrated_kmh = (None, None)
