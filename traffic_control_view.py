@@ -26,7 +26,7 @@ button:hover{background:#ecf5ff}
 .card{background:white;border:1px solid #dce6f1;border-radius:18px;overflow:hidden}
 .head{padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px}
 .head strong{font-size:13px}.head small{font-size:10px;color:#748ba1}
-.screen{height:300px;background:#d0e6ef;position:relative;overflow:hidden}
+.screen{height:355px;background:#d0e6ef;position:relative;overflow:hidden}
 video,canvas{display:block;height:100%;width:100%;object-fit:contain}
 .screen video{background:#162332}
 .screen canvas{cursor:grab}
@@ -41,7 +41,7 @@ video,canvas{display:block;height:100%;width:100%;object-fit:contain}
 .note{background:#fff8ea;border:1px solid #f1e6ca;padding:12px 14px;border-radius:12px;color:#705d3d;font-size:11px;line-height:1.6}
 .fallback{display:none;position:absolute;inset:0;background:#f1f5fa;z-index:3;padding:30px;text-align:center;align-items:center;justify-content:center;flex-direction:column;gap:12px}
 .fallback input{font-size:11px;max-width:100%}
-@media(max-width:680px){.grid{grid-template-columns:1fr}.screen{height:250px}}
+@media(max-width:680px){.grid{grid-template-columns:1fr}.screen{height:300px}}
 </style>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 </head><body>
@@ -60,7 +60,7 @@ video,canvas{display:block;height:100%;width:100%;object-fit:contain}
 <div class="timeline"><button id="play">Pause</button><span id="time">00:00</span>
 <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Simulation timeline"/><span class="muted" id="duration"></span>
 <select id="rate" aria-label="Simulation playback speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></div>
-<div class="note">This is a **hypothetical intervention**, not an automatically approved crossing, a measured reduction in crashes, or a reconstruction of this particular road's geometry. Signal phases and travel behavior use clearly stated assumptions. The simulated video clock is intentionally independent of the original after changing traffic rules.</div>
+<div class="note">This is a <strong>hypothetical intervention</strong>, not an automatically approved crossing, a measured reduction in crashes, or a reconstruction of this particular road's geometry. Signal phases and travel behavior use clearly stated assumptions. The simulated video clock is intentionally independent of the original after changing traffic rules.</div>
 <script id="scene" type="application/json">__DATA__</script>
 <script type="module">
 const D=JSON.parse(document.getElementById("scene").textContent);
@@ -68,6 +68,13 @@ const original=document.getElementById("source");
 const fallback=document.getElementById("fallback");
 if(!original.getAttribute("src"))fallback.style.display="flex";
 original.addEventListener("error",()=>fallback.style.display="flex");
+// Match iframe height to responsive content instead of clipping mobile scene.
+const reportHeight=()=>window.parent.postMessage({
+ isStreamlitMessage:true,type:"streamlit:setFrameHeight",
+ height:Math.ceil(document.body.scrollHeight+8)
+},"*");
+new ResizeObserver(reportHeight).observe(document.body);
+reportHeight();
 document.getElementById("file").onchange=e=>{
  const file=e.target.files?.[0];if(!file)return;
  original.src=URL.createObjectURL(file);fallback.style.display="none";
@@ -88,9 +95,9 @@ try{
  sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);sun.shadow.camera.left=-110;sun.shadow.camera.right=110;
  sun.shadow.camera.top=110;sun.shadow.camera.bottom=-110;scene.add(sun);
  const cam=new THREE.PerspectiveCamera(49,1,.1,350);
- cam.position.set(30,34,48);
+ cam.position.set(18,20,32);
  const orbit=new OrbitControls(cam,render.domElement);
- orbit.target.set(0,0,0);orbit.enableDamping=true;orbit.maxPolarAngle=Math.PI/2.05;
+ orbit.target.set(-1,0,0);orbit.enableDamping=true;orbit.maxPolarAngle=Math.PI/2.05;
  orbit.minDistance=13;orbit.maxDistance=145;orbit.update();
  const material=(color)=>new THREE.MeshStandardMaterial({color,roughness:.7,metalness:.02});
  const gray=material(0x394657),sidewalk=material(0xb2bec5),grass=material(0x8db18c),
@@ -211,8 +218,8 @@ try{
  document.getElementById("restart").onclick=()=>{clock=0;previous=performance.now()};
  document.getElementById("seek").oninput=e=>{clock=Number(e.target.value)/1000*D.inputs.seconds;previous=performance.now()};
  document.getElementById("topview").onclick=()=>{
-   top=!top;cam.position.set(top?1:30,top?95:34,top?1:48);
-   orbit.target.set(0,0,0);orbit.update();
+   top=!top;cam.position.set(top?1:18,top?95:20,top?1:32);
+   orbit.target.set(-1,0,0);orbit.update();
    document.getElementById("topview").textContent=top?"Perspective":"Top view";
  };
  requestAnimationFrame(draw);
