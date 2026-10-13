@@ -249,10 +249,19 @@ def results_page(job, snap, hosted: bool):
                 st.caption("Verification before real construction: "+rec["verify"])
     st.caption("These recommendations are rule-based explanations grounded in detector observations. They are not licensed engineering designs or measured benefits.")
 
-    _section("06 · Video-matched 3D scene replay","Track positions and original timestamps with editable 3D scene interventions")
-    render_reconstruction(job,snap)
-    _section("07 · Additional traffic simulation","Compare hypothetical traffic scenarios in a separate simplified 2.5D model")
-    simulation_panel()
+    _section("06 · AI-recommended 3D road experiment","Video-matched tracks, editable interventions, original camera angle")
+    st.caption("Generate a new model based on the analyzed tracked positions and evidence-linked recommendations. The observed position/timeline remains the reference, while what-if motion is hypothetical.")
+    generate_key="sr_3d_generated_"+job.id
+    if st.button("Generate recommendations & 3D simulation",type="primary",
+                 use_container_width=True,key="sr_build_3d_"+job.id):
+        st.session_state[generate_key]=True
+    if st.session_state.get(generate_key,False):
+        render_reconstruction(job,snap)
+    else:
+        st.info("Click the button above to open the interactive road model here. This keeps the initial results page fast.")
+    _section("07 · Optional teaching simulator","Alternative simplified traffic-flow scenario (not fitted to this video)")
+    with st.expander("Open separate educational 2.5D toy simulation"):
+        simulation_panel()
 
     _section("08 · Download your full analysis","Transparent evidence and documented assumptions")
     report={
