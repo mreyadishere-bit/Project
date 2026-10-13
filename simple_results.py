@@ -65,6 +65,23 @@ def show_results(job,snap):
         st.line_chart(curve,height=240,use_container_width=True)
     st.caption("Shows visible objects in sampled frames, not how many distinct cars passed.")
 
+    # Evidence-linked, timestamped review events (not verified collisions).
+    from safety_interactions import find_interactions
+    interaction_events=find_interactions(
+        getattr(job,"objects_file",None),
+        snap.get("frame_width",0),snap.get("frame_height",0)
+    )
+    st.markdown("### Events worth reviewing")
+    if interaction_events:
+        st.write(f"{len(interaction_events)} time-localized pedestrian/vehicle review candidate(s). These are image-plane proximity observations — NOT confirmed accidents, near misses, or unauthorized crossings.")
+        for i,event in enumerate(interaction_events[:8],1):
+            with st.container(border=True):
+                st.markdown(f"**{i}. Possible shared-space interaction · {event['video_second']:.1f}s**")
+                st.caption(f"Sampled window {event['start_second']:.1f}–{event['end_second']:.1f}s · {event['frame_count']} supporting frames · IDs {event['person_track']} and {event['vehicle_track']}")
+                st.write(event["explanation"])
+    else:
+        st.info("No sustained pedestrian–vehicle image-overlap was established from the tracked frames. This does not mean the road is safe; the AI may have missed objects or the video may lack enough coverage.")
+
     st.markdown("### Recommendations supported by this footage")
     st.caption("Only video-backed review suggestions appear here. No automatic pedestrian crossing or speed limit is proposed without supporting field evidence.")
     for i,r in enumerate(story["recommendations"],1):
@@ -80,20 +97,22 @@ def show_results(job,snap):
             st.caption("Evidence status: "+r["confidence"]+" · Priority: "+r["priority"])
             st.caption("Check before construction: "+r["verify"])
 
-    st.markdown("### See what the AI observed — and explore improvements")
-    st.caption("Start with an accurate side-by-side VIDEO comparison: original footage on the left, the SAME video with evidence-based highlights or illustrative changes on the right. Switch to 3D inspection if you want to explore approximate geometry.")
-    if st.button("Compare footage and explore improvements",type="primary",use_container_width=True,key="clean_sim_"+job.id):
-        st.session_state["clean_sim_active_"+job.id]=True
-    if st.session_state.get("clean_sim_active_"+job.id):
-        from road_compare3d import render_reconstruction
-        render_reconstruction(job,snap)
+    st.markdown("### Explore a working 3D traffic-control concept")
+    st.caption("The original video stays real; the new 3D scenario follows its own hypothetical signal schedule because an intervention changes traffic timing. Vehicles stop and start, pedestrians wait, then cross on WALK.")
+    if st.button("Generate interactive 3D crossing & signal simulation",type="primary",
+                 use_container_width=True,key="control_sim_"+job.id):
+        st.session_state["control_sim_active_"+job.id]=True
+    if st.session_state.get("control_sim_active_"+job.id):
+        from traffic_control_view import show_concept
+        show_concept(job,snap,interaction_events,key="control_"+job.id)
 
     with st.expander("Download data & inspect measurement limits"):
         report={"source":snap["label"],"status":snap["status"],
                 "crossings":crossings,"evidence":evidence,
                 "recommendations":story["recommendations"],
                 "review_needed":"Single-camera AI can miss vehicles and cannot establish metric speed or 3D dimensions without calibration.",
-                "context":story["context"],"kinematic_evidence":story["measurements"]}
+                "context":story["context"],"kinematic_evidence":story["measurements"],
+                "interaction_review_candidates":interaction_events}
         st.download_button("Full report (JSON)",json.dumps(report,ensure_ascii=False,indent=2),
                            file_name="road-report.json",mime="application/json")
         for path in (job.objects_file,job.crossings_file,job.summary_file,job.events_file):
