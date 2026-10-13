@@ -19,6 +19,7 @@ from video_engine import VideoJob, VideoSettings, OUTPUTS
 from live_sources import canonical_youtube_live_url
 from public_cameras import get_camera, camera_choices
 from results_ui import results_page
+from traffic_geometry import RoadCalibration
 
 STATUS = {
     "starting": ("Starting", "blue"),
@@ -33,8 +34,8 @@ STATUS = {
 }
 PRESETS = {
     "Quick scan": ("yolo26n.pt", 2, 512),
-    "Balanced": ("yolo26n.pt", 5, 640),
-    "Deep analysis": ("yolo26s.pt", 10, 640),
+    "Balanced": ("yolo26s.pt", 5, 768),
+    "Deep analysis": ("yolo26m.pt", 15, 960),
     "Custom": (None, None, None),
 }
 ALLOWED_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".m4v"}
@@ -91,7 +92,7 @@ def brand(hosted, snap):
         '<div class="sr-topright">'
         '<span class="sr-topchip"><span class="sr-dot"></span>' + escape(label) + '</span>'
         '<span class="sr-topchip">' + ("CLOUD / CPU" if hosted else "LOCAL WORKSPACE") + '</span>'
-        '<span class="sr-topchip">RESEARCH BUILD · V3</span>'
+        '<span class="sr-topchip">RESEARCH BUILD · V5</span>'
         '</div></div>', unsafe_allow_html=True
     )
     st.markdown(
@@ -207,7 +208,7 @@ def source_and_settings(hosted: bool, running: bool):
                                          disabled=running)
                     fps = st.select_slider("Frames analyzed / video second", [1, 2, 5, 10, 15, 30],
                                            value=5, disabled=running)
-                    image_size = st.selectbox("Inference image size", [416, 512, 640, 960],
+                    image_size = st.selectbox("Inference image size", [416, 512, 640, 768, 960],
                                               index=2, disabled=running)
                 confidence = st.slider("Minimum confidence", .1, .9, .35, .05, disabled=running)
             with c2:
@@ -215,18 +216,42 @@ def source_and_settings(hosted: bool, running: bool):
                 save_video = st.checkbox("Create final playable video (H.264)", value=True, disabled=running or source_mode in {"PC camera", "YouTube Live (beta)", "Free Live Traffic Cameras"},key="sr_export_video")
                 if save_video:
                     st.caption("Creates the full-timeline, time-sampled annotated MP4 after analysis. H.264 export takes additional time and disk space; original audio is not kept.")
-        with st.expander("Speed calibration (optional, research only)"):
-            calibrate = st.checkbox("I have a measured metres-per-pixel scale for this camera",
+        st.markdown("**Traffic measurement**")
+        count_line_fraction = st.slider(
+            "Vehicle counting line (vertical position of image)",
+            min_value=0.10,max_value=0.90,value=0.55,step=.05,
+            disabled=running,
+            help="Counts each persistent track when its footpoint crosses this line. Choose a region clear of occlusion.",
+            key="sr_count_line"
+        )
+        st.caption("Passed cars ≠ cars visible at the last frame. The counting line must cross actual vehicle paths.")
+        with st.expander("Surveyed camera / road calibration (optional)"):
+            calibrate = st.checkbox("I have 4 surveyed corners on the flat road plane",
                                     disabled=running, key="sr_calibrate")
             meters_per_pixel = None
+            road_calibration = None
             if calibrate:
-                meters_per_pixel = st.number_input(
-                    "Approximate metres per image pixel", min_value=0.0001, max_value=100.0,
-                    value=0.025, step=0.005, format="%.4f", disabled=running
-                )
-                st.warning("A constant scale cannot correct perspective. The km/h values are rough estimates near the calibration region, not radar speeds or legal evidence.")
+                st.warning("Select 4 points of a MEASURED flat road rectangle. Incorrect points = incorrect speed and distance.")
+                width_m = st.number_input("Surveyed width (metres)",1.,100.,7.,.5,key="sr_road_width",disabled=running)
+                length_m = st.number_input("Surveyed length (metres)",2.,1000.,60.,5.,key="sr_road_length",disabled=running)
+                st.caption("Corner positions in % of image: near-left, near-right, far-right, far-left. Default coordinates are PLACEHOLDERS, not automatic reconstruction.")
+                defaults=[(20.,85.),(80.,85.),(60.,20.),(40.,20.)]
+                corners=[]
+                for k,(dx,dy) in enumerate(defaults):
+                    left,right=st.columns(2)
+                    px=left.number_input(f"Corner {k+1} X %",0.,100.,dx,1.,key=f"sr_corner_x_{k}",disabled=running)
+                    py=right.number_input(f"Corner {k+1} Y %",0.,100.,dy,1.,key=f"sr_corner_y_{k}",disabled=running)
+                    corners.append((px/100,py/100))
+                if st.checkbox("I confirm these points and distances are surveyed",key="sr_calibration_confirm",disabled=running):
+                    try:
+                        road_calibration = RoadCalibration(tuple(corners),width_m,length_m)
+                        st.success("Planar calibration enabled: approximate surveyed road-plane speeds and angles.")
+                    except ValueError as exc:
+                        st.error(str(exc))
+                else:
+                    st.caption("Metric ground-plane calculations remain off until confirmed.")
             else:
-                st.caption("Without calibration, motion is shown in pixels/second. The system will NOT invent real-world vehicle speeds.")
+                st.caption("Without surveyed geometry, image motion is measured in pixels per second. Exact 3D depth, vehicle mass and metric speed cannot be recovered.")
 
         start = st.button("Start analyzing  →", type="primary", disabled=running,
                           use_container_width=True, key="sr_start")
@@ -257,7 +282,10 @@ def source_and_settings(hosted: bool, running: bool):
                         model_name=model, confidence=confidence, image_size=image_size,
                         analysis_fps=fps, all_classes=all_classes,
                         save_video=bool(save_video and source_mode not in {"PC camera", "YouTube Live (beta)", "Free Live Traffic Cameras"}),
-                        meters_per_pixel=meters_per_pixel
+                        meters_per_pixel=meters_per_pixel,
+                        road_calibration=road_calibration,
+                        count_line_fraction=count_line_fraction,
+                        tracker="botsort.yaml"
                     ), label=label, source_kind=("youtube" if source_mode == "YouTube Live (beta)" else "public_live" if source_mode == "Free Live Traffic Cameras" else "file")
                 )
                 st.rerun()
