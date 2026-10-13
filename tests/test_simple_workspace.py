@@ -26,7 +26,8 @@ class SimpleWorkspaceTests(unittest.TestCase):
         self.assertIn("st.file_uploader",inspect.getsource(video_tab))
         self.assertEqual(len(at.slider),0)
         self.assertEqual(len(at.radio),0)
-        self.assertIn("Understand any road video",str(at.title))
+        self.assertTrue(at.title)
+        self.assertIn("Understand any road video",at.title[0].value)
 
     @unittest.skipUnless(shutil.which("node"),"Node runtime missing")
     def test_scene_javascript_parses(self):
