@@ -108,10 +108,12 @@ class LiveWorkerTests(unittest.TestCase):
             previous_output = video_engine.OUTPUTS
             video_engine.OUTPUTS = Path(tmp) / "results"
             try:
-                with patch.dict(sys.modules, {"ultralytics": fake_yolo, "torch": fake_torch}), \\
-                     patch("live_sources.resolve_youtube_live",
-                           return_value=("https://stream.example.com/live.m3u8", "Public Road")),
-                     patch("video_engine.cv2.VideoCapture", side_effect=Capture):
+                with (
+                    patch.dict(sys.modules, {"ultralytics": fake_yolo, "torch": fake_torch}),
+                    patch("live_sources.resolve_youtube_live",
+                          return_value=("https://stream.example.com/live.m3u8", "Public Road")),
+                    patch("video_engine.cv2.VideoCapture", side_effect=Capture),
+                ):
                     job = VideoJob("https://youtu.be/jfKfPfyJRdk", VideoSettings(), source_kind="youtube")
                     try:
                         deadline = time.monotonic() + 5
