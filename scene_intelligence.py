@@ -87,3 +87,44 @@ def diagnostic_events(diag: dict, second: float, last_emitted: dict, cooldown: f
                            "title": title, "description": description, "level": level})
             last_emitted[event_type] = second
     return events
+
+
+def draw_scene_overlay(frame, detections):
+    """Subtle professional object labels, instead of default multicolour plot().
+
+    Image annotations are qualitative; image-plane velocities are not road speed.
+    """
+    import cv2
+    annotated = frame.copy()
+    height, width = annotated.shape[:2]
+    for item in detections:
+        category = str(item["class"])
+        # OpenCV BGR — blue for vehicles, teal for people, subdued neutral for others.
+        color = (214, 127, 42) if category in {"car", "truck", "bus", "motorcycle", "bicycle"} else (
+            (156, 156, 36) if category == "person" else (170, 146, 123)
+        )
+        x1, y1 = int(max(0, min(width-1, item["x1"]))), int(max(0, min(height-1, item["y1"])))
+        x2, y2 = int(max(0, min(width-1, item["x2"]))), int(max(0, min(height-1, item["y2"])))
+        if x2 <= x1 or y2 <= y1:
+            continue
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2, cv2.LINE_AA)
+        tag = category
+        if item.get("track_id") not in (None, ""):
+            tag += f"  #{item['track_id']}"
+        tag += f"  {item['confidence']:.0%}"
+        if item.get("calibrated_speed_kmh") is not None:
+            tag += f"  ~{item['calibrated_speed_kmh']:.0f} km/h"
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        scale = .43 if width < 950 else .52
+        thickness = 1
+        (text_w, text_h), baseline = cv2.getTextSize(tag, font, scale, thickness)
+        box_w = min(width-1, text_w+16)
+        label_x = min(x1, max(0, width-box_w-1))
+        # Keep label inside video bounds when an object touches the top edge.
+        label_y = max(0, y1-text_h-baseline-13) if y1 >= text_h+baseline+13 else min(height-1, y1+2)
+        cv2.rectangle(annotated, (label_x, label_y),
+                      (label_x+box_w, min(height-1, label_y+text_h+baseline+13)),
+                      (29, 41, 52), -1)
+        cv2.putText(annotated, tag, (label_x+7, label_y+text_h+7),
+                    font, scale, (250, 251, 252), thickness, cv2.LINE_AA)
+    return annotated
