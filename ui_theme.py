@@ -105,6 +105,14 @@ div[data-testid="stAlert"] {border-radius:13px;border:1px solid #e4eaf3;}
  .sr-section-label{align-items:flex-start;flex-direction:column;}
  .sr-brand .sr-wordmark{font-size:17px;}
 }
+
+.sr-results-header {padding:27px 32px 23px;margin:30px 0 12px;border:1px solid #e3ebf7;
+background:linear-gradient(125deg,#fff,#f3f8ff);border-radius:22px;}
+.sr-results-header h2 {font-size:clamp(25px,3vw,37px);margin:0 0 9px;letter-spacing:-.055em;}
+.sr-results-header p {font-size:13px;color:#7b8a9f;margin:0;}
+.sr-metric-grid.sr-metric-six{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:700px){.sr-metric-grid.sr-metric-six{grid-template-columns:repeat(2,minmax(0,1fr))}
+.sr-results-header{padding:22px 19px}}
 </style>
 """
 
