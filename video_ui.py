@@ -216,6 +216,11 @@ def source_and_settings(hosted: bool, running: bool):
                     help="Lower threshold improves recall for distant cars but can increase false positives. Counting still requires stable track IDs.")
             with c2:
                 all_classes = st.checkbox("Detect all supported YOLO classes", value=False, disabled=running)
+                use_openvino = st.checkbox(
+                    "Use Intel OpenVINO CPU backend (optional)",
+                    value=False, disabled=running,
+                    help="Requires a separately installed free OpenVINO runtime. The FIRST export can be much slower; later cached runs may be faster. Falls back to PyTorch if unavailable."
+                )
                 save_video = st.checkbox("Create final playable video (H.264)", value=True, disabled=running or source_mode in {"PC camera", "YouTube Live (beta)", "Free Live Traffic Cameras"},key="sr_export_video")
                 if save_video:
                     st.caption("Creates the full-timeline, time-sampled annotated MP4 after analysis. H.264 export takes additional time and disk space; original audio is not kept.")
@@ -293,7 +298,7 @@ def source_and_settings(hosted: bool, running: bool):
                         road_calibration=road_calibration,
                         camera_fov_deg=camera_fov_deg,
                         count_line_fraction=count_line_fraction,
-                        tracker="traffic_botsort.yaml"
+                        tracker="traffic_botsort.yaml", use_openvino=use_openvino
                     ), label=label, source_kind=("youtube" if source_mode == "YouTube Live (beta)" else "public_live" if source_mode == "Free Live Traffic Cameras" else "file")
                 )
                 st.rerun()
@@ -352,7 +357,7 @@ def video_stage(snap, job):
                 st.markdown(f"**Processing status**")
                 st.markdown('<span class="sr-tag ' + tone + '">' + escape(label.upper()) + '</span>', unsafe_allow_html=True)
                 st.caption(f"Source: {snap['label']}")
-                st.caption(f"Compute: {snap['device']}")
+                st.caption(f"Compute: {snap['device']} · {snap.get('inference_backend','PyTorch')}")
                 st.caption(f"Analyzed frames: {snap['analyzed_frames']:,}")
                 st.caption(f"Actual analysis throughput: {snap['processing_fps']:.1f} frames/s (wall-clock)")
                 if snap.get("effective_sample_fps"):
