@@ -29,6 +29,7 @@ VEHICLES = {"car", "motorcycle", "bus", "truck", "bicycle"}
 SUMMARY_FIELDS = ["video_second", "frame_number", "people", "vehicles", "cars", "buses", "trucks", "motorcycles", "bicycles", "traffic_lights", "stop_signs", "all_objects"]
 OBJECT_FIELDS = ["video_second", "frame_number", "track_id", "class", "confidence", "x1", "y1", "x2", "y2", "center_x", "center_y", "direction", "image_motion_px_s", "calibrated_speed_kmh", "world_x_m", "world_y_m", "heading_deg", "observed_at_utc"]
 EVENT_FIELDS = ["video_second", "event_type", "title", "description", "level"]
+CROSSING_FIELDS = ["second", "track_id", "class", "direction"]
 
 
 def motion_direction(previous: tuple[float, float] | None, current: tuple[float, float], threshold=8.0):
@@ -182,6 +183,7 @@ class VideoJob:
         self.frame_width = 0
         self.frame_height = 0
         self.events_file = self.folder / "events.csv"
+        self.crossings_file = self.folder / "crossings.csv"
         self._stop = threading.Event()
         self._pause = threading.Event()
         self._lock = threading.Lock()
@@ -343,13 +345,15 @@ class VideoJob:
             previous_motion: dict[int, tuple[float, float, float]] = {}
             previous_world: dict[int, tuple[float,float,float]] = {}
             last_emitted: dict[str, float] = {}
-            with self.summary_file.open("w", encoding="utf-8-sig", newline="") as summaries, self.objects_file.open("w", encoding="utf-8-sig", newline="") as objects, self.events_file.open("w", encoding="utf-8-sig", newline="") as event_stream:
+            with self.summary_file.open("w", encoding="utf-8-sig", newline="") as summaries, self.objects_file.open("w", encoding="utf-8-sig", newline="") as objects, self.events_file.open("w", encoding="utf-8-sig", newline="") as event_stream, self.crossings_file.open("w",encoding="utf-8-sig",newline="") as crossing_stream:
                 summary_csv = csv.DictWriter(summaries, fieldnames=SUMMARY_FIELDS)
                 object_csv = csv.DictWriter(objects, fieldnames=OBJECT_FIELDS)
                 summary_csv.writeheader()
                 object_csv.writeheader()
                 event_csv = csv.DictWriter(event_stream, fieldnames=EVENT_FIELDS)
                 event_csv.writeheader()
+                crossing_csv=csv.DictWriter(crossing_stream,fieldnames=CROSSING_FIELDS)
+                crossing_csv.writeheader()
                 while not self._stop.is_set():
                     if self._pause.is_set():
                         time.sleep(0.12)
@@ -440,7 +444,9 @@ class VideoJob:
                                 "heading_deg": heading, "observed_at_utc": now_iso,
                             })
                     counts = frame_counts(detections)
-                    crossing_events = self.crossings.observe(detections, frame.shape[1],frame.shape[0],seconds)
+                    with self._lock:
+                        crossing_events = self.crossings.observe(detections, frame.shape[1],frame.shape[0],seconds)
+                    crossing_csv.writerows(crossing_events)
                     diag = scene_diagnostics(frame, detections, counts)
                     new_events = diagnostic_events(diag, seconds, last_emitted)
                     event_csv.writerows(new_events)
@@ -451,6 +457,7 @@ class VideoJob:
                         summaries.flush()
                         objects.flush()
                         event_stream.flush()
+                        crossing_stream.flush()
                     # Prune positions of inactive tracks, without resetting unique-ID count.
                     active_ids = {int(d["track_id"]) for d in detections if d["track_id"] != ""}
                     for track_id in list(previous_points):
