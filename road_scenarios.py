@@ -50,7 +50,7 @@ def make_scenarios(report: dict, evidence: dict) -> dict:
             "id": "inspection", "title": "Inspect the actual road footage",
             "observed": f"Only {frames} frames have been analyzed; no specific physical change has sufficient evidence.",
             "change": "Show the actual image without a fabricated road modification.",
-            "why": "A visually convincing simulation is not useful if the video doesn't support a specific problem.",
+            "why": "The footage is not sufficient to justify a specific engineering change.",
             "validate": "Obtain longer, representative footage and verify detector accuracy.",
             "claim": "No engineering benefit can be calculated from the available evidence.",
             "evidence_based": False
