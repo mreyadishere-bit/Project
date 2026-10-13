@@ -4,6 +4,54 @@
 
 [Live Streamlit research demo](https://project-imqe2wriheusspmbnmgyxg.streamlit.app/) · Python 3.11 · Streamlit · Ultralytics YOLO · OpenCV
 
+## V5.1 CPU performance and traffic detection QA (2026-10-13)
+
+This update is based on visible issues in the same 18-second elevated
+motorway video: many vehicles visible to a person but **zero tracked objects
+in sampled frames**; actual CPU throughput around **3–4 FPS** despite a
+higher requested analysis FPS; and an unrelated toy 2.5D road simulation
+mistaken for a video reconstruction.
+
+- Switched to a documented custom **BoT-SORT** tracker configuration tuned for
+  stationary road cameras (`gmc_method: none`; track matching at lower
+  confidence). Detector confidence defaults to `0.18` rather than `0.35`.
+  **This may increase both recall and false positives**, and requires a labeled
+  test before anyone can make accuracy claims.
+- Processing presets now respect the CPU budget: Fast CPU (tiny model, 2
+  sampled frames/second), Balanced (small model, 2), Deep (small, 5), and Max
+  detail (medium model, 2, high-resolution). These are VIDEO sampling
+  frequencies, not actual wall-clock inference throughput.
+- Progress reports actual model inference ms, processed FPS, video FPS, sampled
+  video-frame rate and fraction of sampled frames with no tracked objects.
+  The interface warns if most frames lack detections despite visible traffic.
+- **Optional detection ROI** focuses the pretrained model on selected road
+  pixels to preserve detail on distant vehicles. Bounding boxes, reports,
+  line-crossing counts, 3D positions and final video all use the original
+  full-frame coordinates. A ROI cannot find cars outside the chosen region.
+- **Optional OpenVINO acceleration**, based on open-source Intel OpenVINO.
+  To enable locally, install `pip install openvino` and tick the checkbox.
+  The first export may be slow. Cached future CPU inference can be faster;
+  fallback to standard PyTorch is automatic. NOT installed by default on the
+  free hosted server, to avoid unexpectedly increasing deployment memory.
+- Removed the **unrelated toy 100 m highway simulation** from the primary
+  video results page. The real video-derived 3D trajectory explorer remains
+  behind a Generate button; without surveyed camera geometry it is still an
+  approximate image-aligned visualization, NOT a faithful metric digital twin.
+
+Useful open-source references: Ultralytics BoT-SORT configs
+(<https://github.com/ultralytics/ultralytics/blob/main/ultralytics/cfg/trackers/botsort.yaml>),
+Roboflow Supervision LineZone
+(<https://supervision.roboflow.com/latest/detection/tools/line_zone/>),
+OpenVINO integration (<https://docs.ultralytics.com/integrations/openvino>),
+and optional SAHI slicing (<https://github.com/obss/sahi>) for particularly
+small vehicles. SAHI full-video inference is **not enabled** here because
+it would multiply CPU inference cost; a benchmark is needed before using it.
+
+There are no guarantees of perfect detection, metric speed or 24/7 realtime
+performance on a free shared CPU. Actual accuracy requires labeled examples
+of this camera and measured ground truth. Existing synthetic CI tests validate
+software behavior, not precision/recall on real traffic videos.
+
 ## Smart Road AI V5 — Grounded traffic analytics and camera-oriented 3D
 
 This release addresses an important mistake in early versions: a count of two
