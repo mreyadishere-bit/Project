@@ -89,7 +89,9 @@ def results_page(job, snap, hosted: bool):
     evidence = snap.get("evidence") or {}
     story = explain_video(evidence,snap["label"])
     status = snap.get("status")
-    if status not in {"completed","stopped","ended"}:
+    if status in {"stopped","error"}:
+        st.warning("Partial analysis: this job did not process the entire video. The report covers only analyzed frames.")
+    elif status not in {"completed","ended"}:
         st.caption("Preliminary results are updating; wait until the video finishes for the final report.")
 
     st.markdown('<div class="sr-results-header"><div class="sr-eyebrow">COMPLETE VIDEO INTELLIGENCE</div>'
