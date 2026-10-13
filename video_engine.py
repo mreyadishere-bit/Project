@@ -104,15 +104,22 @@ class VideoSettings:
 
 
 class VideoJob:
-    """One file or one PC camera, isolated model and tracker per job."""
-    def __init__(self, source: str | int, settings: VideoSettings, label: str = "Video"):
+    """One file, PC camera or public live video, isolated per worker."""
+    def __init__(self, source: str | int, settings: VideoSettings, label: str = "Video", source_kind: str = "file"):
         if settings.model_name not in {"yolo26n.pt", "yolo26s.pt", "yolo26m.pt"}:
             raise ValueError("Invalid model")
         if not 0.1 <= settings.confidence <= 0.95:
             raise ValueError("Invalid confidence")
         if settings.analysis_fps not in {1, 2, 5, 10, 15, 30}:
             raise ValueError("Invalid analysis rate")
+        if source_kind not in {"file", "youtube"}:
+            raise ValueError("Unsupported source kind")
+        if source_kind == "youtube":
+            from live_sources import canonical_youtube_live_url
+            source = canonical_youtube_live_url(str(source))
         self.source = source
+        self.source_kind = source_kind
+        self.is_live = isinstance(source, int) or source_kind == "youtube"
         self.settings = settings
         self.label = label[:120]
         self.is_camera = isinstance(source, int)
@@ -129,6 +136,11 @@ class VideoJob:
         self.status = "starting"
         self.error = ""
         self.preview_jpeg: bytes | None = None
+        self.best_preview_jpeg: bytes | None = None
+        self.best_preview_at = 0.0
+        self.best_detection_count = 0
+        self.detected_class_totals = Counter()
+        self.detected_frames = 0
         self.total_frames = 0
         self.frames_read = 0
         self.analyzed_frames = 0
@@ -170,7 +182,11 @@ class VideoJob:
         with self._lock:
             return {
                 "status": self.status, "error": self.error, "label": self.label,
-                "preview_jpeg": self.preview_jpeg, "duration_seconds": self.duration_seconds,
+                "preview_jpeg": self.preview_jpeg, "best_preview_jpeg": self.best_preview_jpeg,
+                "best_preview_at": self.best_preview_at, "best_detection_count": self.best_detection_count,
+                "detected_class_totals": dict(self.detected_class_totals),
+                "detected_frames": self.detected_frames, "source_kind": self.source_kind,
+                "is_live": self.is_live, "duration_seconds": self.duration_seconds,
                 "video_second": self.video_second, "total_frames": self.total_frames,
                 "frames_read": self.frames_read, "analyzed_frames": self.analyzed_frames,
                 "detected_now": dict(self.detected_now), "max_vehicles": self.max_vehicles,
@@ -199,17 +215,23 @@ class VideoJob:
                 self.device = "GPU (CUDA)" if device == "0" else "CPU"
                 self.status = "loading model"
             model = YOLO(self.settings.model_name)
-            cap = cv2.VideoCapture(self.source)
+            capture_source = self.source
+            if self.source_kind == "youtube":
+                from live_sources import resolve_youtube_live
+                capture_source, broadcast_title = resolve_youtube_live(self.source)
+                with self._lock:
+                    self.label = broadcast_title
+            cap = cv2.VideoCapture(capture_source)
             if not cap.isOpened():
                 raise ValueError("Cannot open source. Check file path or camera permissions / camera index.")
-            if self.is_camera:
+            if self.is_live:
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                 camera_reader = LatestCameraFrames(cap, self._stop)
             video_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0)
             if not (1 <= video_fps <= 240):
                 video_fps = 30.0
-            total_frames = 0 if self.is_camera else max(0, int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0))
-            frame_step = max(1, round(video_fps / self.settings.analysis_fps)) if not self.is_camera else 1
+            total_frames = 0 if self.is_live else max(0, int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0))
+            frame_step = max(1, round(video_fps / self.settings.analysis_fps)) if not self.is_live else 1
             model_classes = model.names
             if self.settings.all_classes:
                 class_ids = None
@@ -239,12 +261,12 @@ class VideoJob:
                         time.sleep(0.12)
                         continue
                     # Grab rather than decode non-sampled frames, to reduce overhead.
-                    if not self.is_camera and i % frame_step:
+                    if not self.is_live and i % frame_step:
                         if not cap.grab():
                             break
                         i += 1
                         continue
-                    if self.is_camera:
+                    if self.is_live:
                         ok, frame, last_camera_version = camera_reader.next_frame(last_camera_version)
                         if not ok:
                             continue  # A slow/no frame interval, not necessarily a failure.
@@ -254,8 +276,8 @@ class VideoJob:
                             break
                     frame_no = i
                     i += 1
-                    seconds = (time.monotonic() - live_start) if self.is_camera else frame_no / video_fps
-                    if self.is_camera and frame_no == 0:
+                    seconds = (time.monotonic() - live_start) if self.is_live else frame_no / video_fps
+                    if self.is_live and frame_no == 0:
                         live_start = time.monotonic()
                         seconds = 0.0
                     # Keep memory/inference reasonable for high-resolution video.
@@ -318,7 +340,7 @@ class VideoJob:
                             del previous_points[track_id]
                             previous_motion.pop(track_id, None)
                     annotated = draw_scene_overlay(frame, detections)
-                    if self.settings.save_video and not self.is_camera:
+                    if self.settings.save_video and not self.is_live:
                         if writer is None:
                             h, w = annotated.shape[:2]
                             output_rate = video_fps / frame_step
@@ -334,6 +356,13 @@ class VideoJob:
                     elapsed = times[-1] - times[0] if len(times) > 1 else 0
                     with self._lock:
                         self.preview_jpeg = buffer.tobytes() if encoded_ok else None
+                        if counts["all_objects"] > self.best_detection_count and encoded_ok:
+                            self.best_detection_count = counts["all_objects"]
+                            self.best_preview_jpeg = buffer.tobytes()
+                            self.best_preview_at = seconds
+                        if counts["all_objects"]:
+                            self.detected_frames += 1
+                        self.detected_class_totals.update(d["class"] for d in detections)
                         self.frames_read = i
                         self.analyzed_frames += 1
                         self.video_second = seconds
@@ -356,7 +385,7 @@ class VideoJob:
                         self.recent_objects.extend(detections[-30:])
                         self.processing_fps = (len(times) - 1) / elapsed if elapsed > 0 else 0
             with self._lock:
-                self.status = "stopped" if self._stop.is_set() else "completed"
+                self.status = "stopped" if self._stop.is_set() else ("ended" if self.is_live else "completed")
         except Exception as exc:
             with self._lock:
                 self.error = f"{type(exc).__name__}: {exc}"
