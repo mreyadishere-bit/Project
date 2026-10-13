@@ -1,37 +1,53 @@
-# Smart Road AI — Video Intelligence v2
+# Smart Road AI
 
-Experimental road monitoring dashboard with **long-form video processing**, YOLO object detection and tracking, CSV streaming exports, and optional local webcam mode. Also includes a prototype citizen report map, weather and ESP32 sensor receiver in local mode. **Not a certified accident-detection or road-safety system.**
+**Road intelligence from video, with evidence before conclusions.**
 
-## Quick start (Windows, Python 3.11)
+[Live Streamlit research demo](https://project-imqe2wriheusspmbnmgyxg.streamlit.app/) · Python 3.11 · Streamlit · Ultralytics YOLO · OpenCV
 
-```powershell
-git clone https://github.com/mreyadishere-bit/Project.git
-cd Project
-setup_windows.bat
-run_windows.bat
+## What works today
+
+- Long video files without a 60-second analysis cap in the local version (processing time/storage still depend on hardware).
+- Recorded-video analysis on the hosted Streamlit demo, subject to server upload, memory and runtime limits.
+- Vehicle/pedestrian detection, ByteTrack IDs, image-plane trajectories and processed frame rates.
+- Frame-by-frame observations: counts by class, brightness, object bounding-box occupancy.
+- Experimental scene flags: visually close pedestrian/vehicle detections, dark frames and crowded images.
+- Image motion in pixels/second and **optional, approximate** km/h values only when a user supplies a metres-per-pixel scale.
+- Events timeline; CSV exports for frames, objects and observations; JSON summary; optional annotated MP4.
+- Premium responsive dashboard, designed for desktop and mobile with accessible native Streamlit controls.
+
+## Explicit limitations
+
+- This is **not** a validated accident predictor, near-miss detector, roadway speed camera, or safety-critical alert system.
+- A single pixels-to-metres scale does **not** resolve camera perspective. Real speeds require surveyed geometry or homography calibration and validation.
+- Apparent image overlap or proximity does not prove physical proximity. Camera depth, occlusion and movement are not solved.
+- A dark video frame is not a photometric measurement of poor roadway lighting.
+- Potholes, cracks, puddles and road damage require dedicated datasets/models and independent evaluation; **the current pretrained detector does not find them**.
+- The public hosted app has no account-level access control. **Never upload sensitive/identifiable footage.**
+
+## Local quick start
+
+Windows: run `setup_windows.bat` once, then `run_windows.bat`.
+
+Cross-platform Python 3.11:
+
+```bash
+python -m venv .venv
+# Activate your virtual environment, then:
+python -m pip install -r requirements.txt
+streamlit run app.py
 ```
 
-Open <http://localhost:8501>. **Next time**, just run `run_windows.bat`: it checks GitHub for updates and updates Python packages before starting. If the app is already running, restart it for new code. Never force-pull over local changes; CSV and SQLite are excluded from Git.
+Hosted mode: set `SMART_ROAD_HOSTED=1` in the deployment environment (or Streamlit secrets), point the deployment to `app.py`, and install `requirements.txt`.
 
-## Cloud preview
+## Next technical milestones
 
-The **repo is not itself a running website**. Deploy once through [Streamlit Community Cloud](https://share.streamlit.io/) using repository `mreyadishere-bit/Project`, branch `main`, entry point `app.py`, and environment variable `SMART_ROAD_HOSTED=1`. An online test deployment can analyze small/medium uploads but is limited by hosted RAM/CPU and storage; it cannot read the visitor's PC file paths or webcam with `cv2.VideoCapture(0)`. For hours of video, run the local app or provision a dedicated video server.
+1. Geometric camera calibration (homography, region of interest, world-plane distance).
+2. Road-specific defect detector trained on properly licensed and labeled imagery, with precision/recall measured.
+3. Multi-object trajectory analytics with uncertainty and occlusion modeling; validated near-conflict metrics only after calibration.
+4. Dynamic safety event review, clips and human confirmation workflow.
+5. Dedicated background GPU/CPU worker with job queue, streaming storage, privacy controls and resumable long-video uploads.
+6. Camera feeds via browser WebRTC or authorized RTSP ingress, with a stable production deployment.
 
-## What is actually measured
+All changes are tested with [GitHub Actions](https://github.com/mreyadishere-bit/Project/actions). The smoke tests use synthetic footage and mocked model predictions; a field validation set is still needed before real-world safety claims.
 
-- YOLO object type/confidence and bounding boxes, ByteTrack IDs, image-plane motion direction (not km/h).
-- Video can be longer than 60 seconds; file frames are sampled by configurable FPS. Wall-clock speed depends on hardware.
-- Incremental `frames.csv`, `objects.csv` and optional annotated MP4, saved locally under ignored `outputs/`.
-- Video analysis is experimental; no validated accident prediction, pothole detection, or true speed estimation yet.
-
-## Notes
-
-- Do **not** publish footage containing private/sensitive details without permission. There is no account authentication in the experimental cloud preview.
-- Never commit weights, private videos, credentials, sensor readings or the local SQLite database.
-- The optional ESP32 receiver requires `ROAD_DEMO_KEY` to be explicitly set. Keep it on a trusted LAN only.
-- See [README_AR.md](README_AR.md) and [VIDEO_V2_GUIDE_AR.md](VIDEO_V2_GUIDE_AR.md) for the complete Arabic guides.
-- Check the GitHub Actions `CI` workflow for syntax and integration-test results.
-
-## License notice
-
-Ultralytics software is distributed under AGPL-3.0 (or a separately obtained enterprise license). Check obligations before any public/commercial deployment. Original prototype code copyright remains with its contributors.
+_Research prototype — not intended for live traffic control or enforcement._
