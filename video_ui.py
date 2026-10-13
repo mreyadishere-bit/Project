@@ -230,6 +230,7 @@ def source_and_settings(hosted: bool, running: bool):
                                     disabled=running, key="sr_calibrate")
             meters_per_pixel = None
             road_calibration = None
+            camera_fov_deg = 70
             if calibrate:
                 st.warning("Select 4 points of a MEASURED flat road rectangle. Incorrect points = incorrect speed and distance.")
                 width_m = st.number_input("Surveyed width (metres)",1.,100.,7.,.5,key="sr_road_width",disabled=running)
@@ -242,6 +243,9 @@ def source_and_settings(hosted: bool, running: bool):
                     px=left.number_input(f"Corner {k+1} X %",0.,100.,dx,1.,key=f"sr_corner_x_{k}",disabled=running)
                     py=right.number_input(f"Corner {k+1} Y %",0.,100.,dy,1.,key=f"sr_corner_y_{k}",disabled=running)
                     corners.append((px/100,py/100))
+                camera_fov_deg = st.slider("Approximate camera horizontal FOV (degrees)",30,120,70,1,
+                                      key="sr_camera_fov",disabled=running,
+                                      help="Enter your camera's actual FOV/intrinsics for more faithful 3D perspective. Default 70° is a guess.")
                 if st.checkbox("I confirm these points and distances are surveyed",key="sr_calibration_confirm",disabled=running):
                     try:
                         road_calibration = RoadCalibration(tuple(corners),width_m,length_m)
@@ -284,6 +288,7 @@ def source_and_settings(hosted: bool, running: bool):
                         save_video=bool(save_video and source_mode not in {"PC camera", "YouTube Live (beta)", "Free Live Traffic Cameras"}),
                         meters_per_pixel=meters_per_pixel,
                         road_calibration=road_calibration,
+                        camera_fov_deg=camera_fov_deg,
                         count_line_fraction=count_line_fraction,
                         tracker="botsort.yaml"
                     ), label=label, source_kind=("youtube" if source_mode == "YouTube Live (beta)" else "public_live" if source_mode == "Free Live Traffic Cameras" else "file")
