@@ -43,8 +43,11 @@ try{
 const T=await import('three'),mod=await import('three/addons/controls/OrbitControls.js');
 const data=JSON.parse(document.getElementById('payload').textContent);
 const W=960,H=Math.max(240,Math.min(640,960*data.height/data.width));
+const metric=data.metric_scene;
 let playing=true,t=0,rate=1,last=performance.now(),mult=.7,widen=0,cross=true,photo=true;
-const specs={car:[42,24,22],truck:[65,32,38],bus:[68,35,38],motorcycle:[22,17,14],bicycle:[19,15,10],person:[11,25,11]};
+const specs=metric?
+ {car:[1.8,1.5,4.4],truck:[2.5,3.2,9],bus:[2.5,3.2,11],motorcycle:[.9,1.2,2.2],bicycle:[.7,1.5,1.8],person:[.55,1.8,.5]}:
+ {car:[42,24,22],truck:[65,32,38],bus:[68,35,38],motorcycle:[22,17,14],bicycle:[19,15,10],person:[11,25,11]};
 const palette={car:0x317ed1,truck:0x5b7b9c,bus:0x4a9f9b,motorcycle:0xc4894b,bicycle:0xad8950,person:0xda8b53};
 const image=new T.TextureLoader().load(data.image);image.colorSpace=T.SRGBColorSpace;
 const groups=[];
@@ -56,13 +59,48 @@ renderer.setSize(container.clientWidth,Math.round(container.clientWidth*H/W));
 renderer.outputColorSpace=T.SRGBColorSpace;container.appendChild(renderer.domElement);
 const scene=new T.Scene();scene.background=new T.Color(0xe7edf6);
 scene.add(new T.HemisphereLight(0xffffff,0x61738d,2));
-const camera=new T.OrthographicCamera(-W/2,W/2,H/2,-H/2,1,2000);camera.position.set(0,0,900);camera.lookAt(0,0,0);
+const camera=metric?
+ new T.PerspectiveCamera(2*Math.atan(H/W*Math.tan(metric.fov_deg*Math.PI/360))*180/Math.PI,W/H,.05,2000):
+ new T.OrthographicCamera(-W/2,W/2,H/2,-H/2,1,2000);
+if(metric){
+ const R=metric.rotation_cv,t=metric.translation_cv;
+ // OpenCV world (x,z,y) -> scene world (x,y,z).
+ // OpenCV camera frame (x right,y down,z forward) -> Three frame (x right,y up,z back).
+ const A=[[R[0][0],R[0][2],R[0][1]],[-R[1][0],-R[1][2],-R[1][1]],[-R[2][0],-R[2][2],-R[2][1]]];
+ const worldToCamera=new T.Matrix4().set(
+ A[0][0],A[0][1],A[0][2],t[0],
+ A[1][0],A[1][1],A[1][2],-t[1],
+ A[2][0],A[2][1],A[2][2],-t[2],
+ 0,0,0,1);
+ worldToCamera.clone().invert().decompose(camera.position,camera.quaternion,new T.Vector3());
+} else {camera.position.set(0,0,900);camera.lookAt(0,0,0);}
 const ctl=new mod.OrbitControls(camera,renderer.domElement);ctl.enableDamping=true;
-const background=new T.Mesh(new T.PlaneGeometry(W,H),new T.MeshBasicMaterial({map:image,transparent:true,opacity:.8,side:T.DoubleSide}));background.position.z=-90;scene.add(background);
-const y=H*(.5-data.line);
-const cnt=new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(-W/2,y,4),new T.Vector3(W/2,y,4)]),new T.LineBasicMaterial({color:0xffce70}));scene.add(cnt);
+if(metric){
+ const facing=new T.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+ ctl.target.copy(camera.position).addScaledVector(facing,40);
+ ctl.update();
+}
+const material=metric?new T.MeshStandardMaterial({map:new T.TextureLoader().load(metric.texture),side:T.DoubleSide,roughness:.95}):
+new T.MeshBasicMaterial({map:image,transparent:true,opacity:.8,side:T.DoubleSide});
+const background=metric?new T.Mesh(new T.PlaneGeometry(metric.width_m,metric.length_m),material):
+new T.Mesh(new T.PlaneGeometry(W,H),material);
+if(metric){
+ background.rotation.x=-Math.PI/2;
+ background.position.set(metric.width_m/2,-.035,metric.length_m/2);
+}else background.position.z=-90;
+scene.add(background);
+const coords=metric?[new T.Vector3(0,.13,metric.length_m*.5),new T.Vector3(metric.width_m,.13,metric.length_m*.5)]:
+ [new T.Vector3(-W/2,H*(.5-data.line),4),new T.Vector3(W/2,H*(.5-data.line),4)];
+const cnt=new T.Line(new T.BufferGeometry().setFromPoints(coords),new T.LineBasicMaterial({color:0xffce70}));scene.add(cnt);
 const crosswalk=new T.Group();
-for(let k=0;k<9;k++){const stripe=new T.Mesh(new T.PlaneGeometry(W*.04,H*.019),new T.MeshBasicMaterial({color:0xfff0d1,side:T.DoubleSide}));stripe.position.set(0,(k-4)*H*.035,10);crosswalk.add(stripe);}
+for(let k=0;k<9;k++){
+ const stripmat=new T.MeshBasicMaterial({color:0xfff0d1,side:T.DoubleSide,transparent:true,opacity:.85});
+ const stripe=metric?new T.Mesh(new T.PlaneGeometry(metric.width_m*.11,.4),stripmat):
+ new T.Mesh(new T.PlaneGeometry(W*.04,H*.019),stripmat);
+ if(metric){stripe.rotation.x=-Math.PI/2;stripe.position.set((k+.5)*metric.width_m/9,.12,metric.length_m*.5);}
+ else stripe.position.set(0,(k-4)*H*.035,10);
+ crosswalk.add(stripe);
+}
 scene.add(crosswalk);
 const models=data.tracks.map(track=>{
  const spec=specs[track.class]||[30,18,17];
@@ -74,7 +112,8 @@ const models=data.tracks.map(track=>{
  }
  return {track,mesh,spec};
 });
-groups.push({scene,renderer,camera,ctl,container,background,crosswalk,models});
+groups.push({scene,renderer,camera,ctl,container,background,crosswalk,models,
+ initialPosition:camera.position.clone(),initialQuaternion:camera.quaternion.clone(),initialTarget:ctl.target.clone()});
 }
 function nearest(points,sec){
  if(!points.length||sec<points[0][0]||sec>points[points.length-1][0])return null;
@@ -99,11 +138,19 @@ function render(now){
  const p=nearest(track.points,time);
  if(!p){mesh.visible=false;continue;}
  mesh.visible=true;
- mesh.position.set((p[1]-.5+(j?widen*.005:0))*W,(.5-p[2])*H+spec[1]*.45,20);
- mesh.scale.set(Math.min(2.5,Math.max(.2,p[3]*W/spec[0])),
-                Math.min(2.5,Math.max(.2,p[4]*H/spec[1])),1);
- const prev=nearest(track.points,time-.3);
- mesh.rotation.z=prev?-Math.atan2((p[2]-prev[2])*H,(p[1]-prev[1])*W):0;
+ if(metric){
+    if(p.length<7){mesh.visible=false;continue;}
+    mesh.position.set(p[5]+(j?widen*.01*metric.width_m:0),spec[1]*.5,p[6]);
+    mesh.scale.set(1,1,1);
+    const prev=nearest(track.points,time-.3);
+    if(prev&&prev.length>=7)mesh.rotation.y=Math.atan2(p[5]-prev[5],p[6]-prev[6]);
+ } else {
+    mesh.position.set((p[1]-.5+(j?widen*.005:0))*W,(.5-p[2])*H+spec[1]*.45,20);
+    mesh.scale.set(Math.min(2.5,Math.max(.2,p[3]*W/spec[0])),
+                   Math.min(2.5,Math.max(.2,p[4]*H/spec[1])),1);
+    const prev=nearest(track.points,time-.3);
+    mesh.rotation.z=prev?-Math.atan2((p[2]-prev[2])*H,(p[1]-prev[1])*W):0;
+ }
  }
  s.ctl.update();s.renderer.render(s.scene,s.camera);
  }
@@ -117,9 +164,14 @@ document.getElementById('speed').oninput=e=>{mult=+e.target.value/100;document.g
 document.getElementById('width').oninput=e=>{widen=+e.target.value;document.getElementById('widthtext').textContent=e.target.value+'% visual shift'};
 document.getElementById('crossing').onchange=e=>cross=e.target.checked;
 document.getElementById('photo').onchange=e=>photo=e.target.checked;
-document.getElementById('reset').onclick=()=>{for(const s of groups){s.camera.position.set(0,0,900);s.camera.zoom=1;s.camera.updateProjectionMatrix();s.ctl.target.set(0,0,0);s.ctl.update()}};
-new ResizeObserver(()=>{for(const s of groups){const w=Math.max(300,s.container.clientWidth);s.renderer.setSize(w,Math.round(w*H/W))}}).observe(document.body);
-document.getElementById('detail').textContent+=' Source track proxies: '+data.tracks.length+', sampled points: '+data.preview_observations+'. '+data.note;
+document.getElementById('reset').onclick=()=>{for(const s of groups){
+s.camera.position.copy(s.initialPosition);s.camera.quaternion.copy(s.initialQuaternion);
+s.camera.zoom=1;s.camera.updateProjectionMatrix();s.ctl.target.copy(s.initialTarget);s.ctl.update()}};
+new ResizeObserver(()=>{for(const s of groups){const w=Math.max(300,s.container.clientWidth);s.renderer.setSize(w,Math.round(w*H/W));if(metric){s.camera.aspect=W/H;s.camera.updateProjectionMatrix()}}}).observe(document.body);
+document.getElementById('detail').textContent+=(metric?
+ ' Metric road-plane texture and approximate camera pose enabled. Reprojection RMSE: '+metric.reprojection_rmse_px+' pixels.':
+ ' Image-space alignment only; no surveyed ground geometry.')+
+ ' Source tracked agents: '+data.tracks.length+', sampled points: '+data.preview_observations+'. '+data.note;
 requestAnimationFrame(render);
 }catch(e){const div=document.getElementById('error');div.style.display='block';div.textContent='Unable to open WebGL 3D viewer: '+String(e)+'. Check browser WebGL or library CDN.';console.error(e)}
 </script></body></html>'''
@@ -127,7 +179,7 @@ requestAnimationFrame(render);
 
 def render_reconstruction(job,snapshot):
     st.markdown("### Reconstructed positions · 3D video replay")
-    st.caption("Measured VIDEO positions and timings drive approximate 3D vehicles, over a real static reference frame. Drag to rotate or zoom. Interventions are editable scenarios, not validated outcomes.")
+    st.caption("Uncalibrated: photo-aligned approximate 3D objects. Calibrated: surveyed real-size flat road surface, video-derived road texture, and estimated matching camera pose. Orbit / zoom and edit the what-if scenario. Neither reconstructs hidden geometry.")
     try: scene=build_scene(job,snapshot)
     except (ValueError,OSError) as exc:
         st.info("3D scene data unavailable: "+str(exc))
