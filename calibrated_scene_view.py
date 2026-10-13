@@ -271,6 +271,9 @@ try{
     new T.Vector3(0,0,-metric.length_m)
  ];
  const validateProjection=()=>{
+   // project() reads the camera's cached inverse matrix. Geometry is only
+   // trustworthy after synchronizing the current pose into matrixWorld.
+   camera.updateMatrixWorld(true);
    const reproject=corners3D.map(p=>p.clone().project(camera));
    const pixels=reproject.map(v=>[(v.x+1)*data.width/2,(1-v.y)*data.height/2]);
    const squared=pixels.map((p,i)=>
