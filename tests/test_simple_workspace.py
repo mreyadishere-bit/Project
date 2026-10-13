@@ -12,7 +12,7 @@ from stable_scene import VIEWER
 
 class SimpleWorkspaceTests(unittest.TestCase):
     def test_upload_is_only_configuration_in_home(self):
-        at=AppTest.from_file("app.py",default_timeout=45)
+        at=AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"),default_timeout=45)
         import os
         from unittest.mock import patch
         with patch.dict(os.environ,{"SMART_ROAD_HOSTED":"1"}):
