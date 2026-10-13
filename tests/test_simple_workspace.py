@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
-from stable_scene import VIEWER
+from road_world3d import VIEWER
 
 
 class SimpleWorkspaceTests(unittest.TestCase):
@@ -39,9 +39,13 @@ class SimpleWorkspaceTests(unittest.TestCase):
             check=subprocess.run(["node","--check",str(file)],capture_output=True,text=True,timeout=15)
         self.assertEqual(check.returncode,0,check.stderr)
 
-    def test_no_rotating_flat_image_scene(self):
-        self.assertNotIn("OrbitControls",VIEWER)
-        self.assertNotIn("PlaneGeometry(W,H)",VIEWER)
-        self.assertIn("backgroundImage",VIEWER)
+    def test_genuine_3d_environment_not_flat_photo_overlay(self):
+        self.assertIn("OrbitControls",VIEWER)
+        self.assertIn("PerspectiveCamera",VIEWER)
+        self.assertIn("CylinderGeometry",VIEWER)
+        self.assertIn("roadRibbon",VIEWER)
+        self.assertIn("lowPolyCar",VIEWER)
+        self.assertIn("Top view",VIEWER)
+        self.assertNotIn("backgroundImage",VIEWER)
 
 if __name__=="__main__":unittest.main()
