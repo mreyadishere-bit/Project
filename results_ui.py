@@ -151,6 +151,22 @@ def results_page(job, snap, hosted: bool):
         st.bar_chart(pd.DataFrame(
             [{"Class":name,"Passed":count} for name,count in crossing["passed_by_class"].items()]
         ).set_index("Class"),height=180)
+    with st.expander("Validate counting accuracy against manually checked traffic"):
+        st.caption("Count only distinct vehicles crossing the SAME yellow line in the source video. This is a real-world check, not an AI estimate.")
+        manual_ok=st.checkbox("I manually counted the full video at this exact line",key="sr_ground_truth_confirm")
+        if manual_ok:
+            actual=st.number_input("Verified vehicles crossing this line",min_value=0,max_value=100000,
+                                   value=0,step=1,key="sr_manual_ground_truth")
+            observed=int(crossing.get("total_passed",0))
+            difference=observed-actual
+            pct=100*abs(difference)/actual if actual else None
+            st.metric("Counting difference (AI − manual)",f"{difference:+d} vehicles")
+            if pct is not None:
+                st.caption(f"Absolute count error: {pct:.1f}% of manually verified crossings. This is one video and not a detector benchmark.")
+            else:
+                st.caption("Ground truth is zero, so relative percentage error is undefined.")
+            if actual and pct and pct>=15:
+                st.warning("Large count mismatch. Check detector confidence, hidden/distant cars, sampling frequency, tracking ID switches and placement of the counting line.")
     if snap.get("calibration"):
         st.caption("Road-plane calibration supplied: estimated ground positions, distances, headings, speeds and limited acceleration can be reviewed. Uncertainty from occlusion, frame sampling and unknown camera intrinsics remains.")
     else:
