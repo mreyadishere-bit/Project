@@ -4,6 +4,43 @@
 
 [Live Streamlit research demo](https://project-imqe2wriheusspmbnmgyxg.streamlit.app/) · Python 3.11 · Streamlit · Ultralytics YOLO · OpenCV
 
+## Road Studio V6.1 · Original footage versus synchronized 3D (2026-10-13)
+
+The Road Studio comparison is now **the actual uploaded video on the left**,
+versus **one edited Three.js 3D scene on the right**. It no longer shows a
+simulation-vs-simulation pair.
+
+- The video HTML5 element is the *only clock*. Play/pause, seek, restart and
+  changes to `currentTime` directly drive all 3D vehicle interpolation.
+  Pausing the original video freezes the simulated traffic.
+- A private, browser-playable H.264 preview of the **real original recording**
+  is generated from the uploaded file (not from the YOLO-annotated output).
+  The source is downscaled only for browser preview, and no public video URL
+  is published. If that private preview exceeds 18 MB, or the format cannot
+  be encoded, the comparison provides a local browser file picker instead
+  of pretending an unsynchronized player is synchronized.
+- Camera-ground projection uses the **same Three.js perspective camera** to
+  back-project detected vehicle bounding-box footpoints to an assumed ground
+  plane, and to render the resulting 3D agents. In Source View this can
+  preserve source-image footpoint alignment, subject to camera framing and
+  tracking error. It cannot recover metric depth or occluded objects from
+  monocular video.
+- The 3D road surface is constructed from approximate normalized boundaries
+  of a divided road seen from an elevated roadside camera. These boundaries
+  are heuristics for the example video, **not** segmented lane geometry or
+  a calibrated road survey. The camera can be switched to Orbit 3D or Top
+  View for inspection. When the camera moves away from Source View, pixel
+  alignment no longer has a meaning.
+- Only the After/Proposed view is simulated. Changing the scene's signs,
+  lane markings, lighting or motion ratio does not change the original
+  recording or provide proof of safety benefits.
+
+**Validation:** Automated tests cover original-video H.264 conversion,
+private bounded media handling, local fallback, JavaScript syntax and
+HTML5 video master-clock wiring. Exact 3D visual alignment and accurate
+traffic geometry on a real source require browser screenshots and on-site
+camera calibration/roadway measurements.
+
 ## Road Studio V6 · Evidence-first recommendations & Blender-style 3D (2026-10-13)
 
 **Deployed entry point remains the minimal upload → Analyze road → results page.**
