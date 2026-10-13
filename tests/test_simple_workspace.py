@@ -48,7 +48,7 @@ class SimpleWorkspaceTests(unittest.TestCase):
         self.assertIn('PerspectiveCamera',VIEWER)
         self.assertIn('CylinderGeometry',VIEWER)
         self.assertIn('vehicleModel',VIEWER)
-        self.assertIn('Top view',VIEWER)
+        self.assertIn('3D top view',VIEWER)
         self.assertIn('Original recorded video',VIEWER)
         self.assertIn('id="matchedBackground"', VIEWER)
         self.assertIn('environment.visible=!aligned', VIEWER)
