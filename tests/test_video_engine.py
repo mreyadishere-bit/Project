@@ -97,7 +97,14 @@ class VideoTests(unittest.TestCase):
                 with job.summary_file.open(encoding="utf-8-sig", newline="") as src:
                     self.assertGreater(len(list(csv.DictReader(src))), 60)
                 with job.objects_file.open(encoding="utf-8-sig", newline="") as src:
-                    self.assertEqual(next(csv.DictReader(src))["class"], "car")
+                    obj = next(csv.DictReader(src))
+                    self.assertEqual(obj["class"], "car")
+                    self.assertIn("image_motion_px_s", obj)
+                    self.assertEqual(obj["calibrated_speed_kmh"], "")
+                with job.events_file.open(encoding="utf-8-sig", newline="") as src:
+                    events = list(csv.DictReader(src))
+                    self.assertGreaterEqual(len(events), 1)
+                    self.assertEqual(events[0]["event_type"], "low_brightness")
             finally:
                 video_engine.OUTPUTS = old
 
