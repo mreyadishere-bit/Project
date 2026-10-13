@@ -430,7 +430,7 @@ def _simulation_options(report):
 
 def render_reconstruction(job, snapshot):
     try:
-        scene = build_scene(job, snapshot, max_points=20000, max_tracks=180)
+        scene = build_scene(job, snapshot, max_points=20000, max_tracks=180, include_annotated_video=False)
     except (OSError, ValueError) as exc:
         st.info("The comparison needs tracked observations: "+str(exc))
         return
