@@ -82,7 +82,7 @@ function mesh(parent,geo,mat,x=0,y=0,z=0){const m=new THREE.Mesh(geo,mat);m.posi
 function roadRibbon(scene,from,to,mat,height=0.015,width=1){
   const vertices=[],idx=[],n=90;
   for(let j=0;j<=n;j++){let z=j/n*155,x=roadX(z);vertices.push(x+from,height,z,x+to,height,z)}
-  for(let i=0;i<n;i++){let k=2*i;idx.push(k,k+1,k+2,k+1,k+3,k+2)}
+  for(let i=0;i<n;i++){let k=2*i;idx.push(k,k+2,k+1,k+1,k+2,k+3)}
   const g=new THREE.BufferGeometry();g.setAttribute("position",new THREE.Float32BufferAttribute(vertices,3));g.setIndex(idx);g.computeVertexNormals();
   const m=new THREE.Mesh(g,mat);m.receiveShadow=true;scene.add(m);return m
 }
