@@ -146,6 +146,12 @@ def source_and_settings(hosted: bool, running: bool):
             )
             label = "YouTube public live broadcast"
             st.caption("Experimental live analysis, not synchronized with the YouTube player. Only a permitted, accessible broadcast can be processed. Stream availability and delay are outside our control.")
+            if source:
+                try:
+                    st.link_button("Watch original video on YouTube ↗",
+                                   canonical_youtube_live_url(source))
+                except ValueError:
+                    pass
         elif source_mode == "Local file":
             value = st.text_input(
                 "Absolute file path on this computer", key="sr_local_path",
@@ -269,6 +275,10 @@ def video_stage(snap, job):
                     st.caption(f"Observed video timestamp: {snap['video_second']:.1f}s")
                 if snap["error"]:
                     st.error(snap["error"])
+                    if snap.get("source_kind") == "youtube":
+                        st.caption("This does not prove the broadcast is offline: YouTube may allow normal playback but refuse server-side frame access.")
+                        st.link_button("Open original YouTube video ↗", job.source,
+                                       use_container_width=True)
                 if snap["status"] in {"starting", "loading model", "running"}:
                     if not snap["is_live"]:
                         if st.button("Resume" if snap["paused"] else "Pause", use_container_width=True, key="sr_pause"):
