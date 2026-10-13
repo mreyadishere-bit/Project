@@ -169,13 +169,16 @@ try{
      bulb.material.emissive=new THREE.Color(on?(i===0?0xa42e29:i===1?0xa87925:0x2c933c):0x000000);
      bulb.material.emissiveIntensity=on?1.8:0;
    });
-   const pedGo=f.phase==="pedestrian_walk"||f.phase==="pedestrian_clearance";
-   pedIndicator.material=pedGo?green:red;
+   const walking=f.phase==="pedestrian_walk";
+   const clearing=f.phase==="pedestrian_clearance";
+   pedIndicator.material=walking?green:clearing?amber:red;
    document.getElementById("phase").textContent=f.phase.replaceAll("_"," ").toUpperCase();
-   document.getElementById("phase").className="phase "+(pedGo?"red":"green");
+   document.getElementById("phase").className="phase "+(walking||clearing?"red":"green");
    document.getElementById("control").textContent=vehicleGo?"Vehicles GO · Pedestrians WAIT":
-      vehicleWarn?"Vehicles SLOW / STOP · Pedestrians WAIT":pedGo?"Vehicles STOP · Pedestrians CROSS / CLEAR":
-      "All-red clearance · everyone waits";
+      vehicleWarn?"Vehicles YELLOW / STOP · Pedestrians WAIT":
+      walking?"Vehicles STOP · Pedestrians may START crossing":
+      clearing?"Vehicles STOP · Pedestrians already crossing CLEAR; no new WALK":
+      "All-red transition · everyone waits";
  }
  function fit(){
    const box=screen.getBoundingClientRect();
