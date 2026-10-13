@@ -34,6 +34,26 @@ def prepare_source_video(job, *, max_inline_bytes=MAX_INLINE_BYTES):
     original = source_video_path(job)
     if original is None:
         return None, "Original file isn't available on this server. Choose a local recording in the comparison viewer."
+    # Preserve full original image quality and avoid an expensive CPU
+    # transcode when the uploaded recording already uses browser-compatible
+    # H.264 in an MP4 container.
+    if original.suffix.lower()==".mp4" and original.stat().st_size<=max_inline_bytes:
+        probe=shutil.which("ffprobe")
+        if probe:
+            try:
+                result=subprocess.run([
+                    probe,"-v","error","-select_streams","v:0",
+                    "-show_entries","stream=codec_name,pix_fmt",
+                    "-of","default=noprint_wrappers=1",str(original)
+                ],capture_output=True,text=True,timeout=15)
+                info=result.stdout.lower()
+                if result.returncode==0 and "codec_name=h264" in info and (
+                        "pix_fmt=yuv420p" in info or "pix_fmt=yuvj420p" in info):
+                    return ("data:video/mp4;base64,"+
+                            base64.b64encode(original.read_bytes()).decode("ascii"),
+                            "Original H.264 recording (unchanged, no re-encoding).")
+            except (OSError,subprocess.TimeoutExpired):
+                pass
     output = Path(job.folder) / "comparison_original.mp4"
     if not output.is_file() or output.stat().st_size == 0:
         ffmpeg = shutil.which("ffmpeg")
