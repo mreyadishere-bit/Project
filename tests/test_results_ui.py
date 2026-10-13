@@ -48,7 +48,8 @@ results_page(job,snap,hosted=True)
         self.assertFalse(result.exception, str(result.exception))
         self.assertGreater(len(result.slider), 0)
         self.assertGreater(len(result.checkbox), 0)
-        self.assertGreater(len(result.button), 0)
+        # The Play/Pause controls live inside the standalone animated iframe,
+        # so they are not Streamlit native buttons returned by AppTest.
 
 
 if __name__=="__main__":
