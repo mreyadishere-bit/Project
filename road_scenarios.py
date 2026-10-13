@@ -66,3 +66,43 @@ def make_scenarios(report: dict, evidence: dict) -> dict:
         "evidence_based": False
     })
     return {"scenarios": options, "initial": next((x["id"] for x in options if x["evidence_based"]), "inspection")}
+
+
+def candidate_site_review(events: list[dict], evidence: dict) -> dict | None:
+    """A field-study recommendation grounded in repeated event timestamps.
+
+    Not authorization for a signal. Two *distinct* time windows of repeated
+    tracked image-point proximity and usable sampled-frame coverage are
+    required before identifying a recurrent review location.
+    """
+    if len(events)<2:
+        return None
+    observed_frames=int(evidence.get("analyzed_frames",0) or 0)
+    if observed_frames<12:
+        return None
+    ordered=sorted(events,key=lambda e:float(e.get("video_second",0)))
+    windows=[]
+    for event in ordered:
+        try:
+            stamp=float(event["video_second"])
+            if int(event["frame_count"])<3:
+                continue
+        except (ValueError,KeyError,TypeError):
+            continue
+        if not windows or stamp-windows[-1]>2.0:
+            windows.append(stamp)
+    if len(windows)<2:
+        return None
+    stamp_text=", ".join(f"{t:.1f}s" for t in windows[:5])
+    return {
+        "id":"repeated_interaction_study",
+        "title":"Review repeated pedestrian–vehicle interaction moments",
+        "evidence":f"Sustained image-point proximity occurred in {len(windows)} separate time windows at approximately {stamp_text}. This is not measured physical clearance.",
+        "reason":"Repeated co-location in the video view merits review of how pedestrians and vehicles use the available space. Tracking errors or perspective can produce misleading proximity.",
+        "action":"Inspect the recorded moments and existing facilities. If on-site review confirms recurrent uncontrolled crossing demand, compare appropriate safe-access treatments, including a controlled pedestrian crossing only where engineering guidance permits it.",
+        "verify":"Verify roadway classification, physical participant positions, pedestrian demand, permitted movements, crossing location, site dimensions and traffic speeds before any signal or layout design.",
+        "priority":"Targeted field review",
+        "expected_benefit":"No real-world change measured. The optional 3D model demonstrates control logic only.",
+        "confidence":"Time-stamped provisional observations; requires field verification",
+        "simulation_option":"signal_concept",
+    }
