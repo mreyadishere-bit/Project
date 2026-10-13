@@ -233,6 +233,16 @@ class VideoJob:
         writer = None
         camera_reader = None
         try:
+            # Resolve public live access BEFORE loading the heavyweight model:
+            # inaccessible YouTube media should fail quickly and clearly.
+            capture_source = self.source
+            if self.source_kind == "youtube":
+                from live_sources import resolve_youtube_live
+                with self._lock:
+                    self.status = "connecting stream"
+                capture_source, broadcast_title = resolve_youtube_live(self.source)
+                with self._lock:
+                    self.label = broadcast_title
             # Load model on the worker thread to avoid freezing UI.
             from ultralytics import YOLO
             import torch
@@ -241,12 +251,6 @@ class VideoJob:
                 self.device = "GPU (CUDA)" if device == "0" else "CPU"
                 self.status = "loading model"
             model = YOLO(self.settings.model_name)
-            capture_source = self.source
-            if self.source_kind == "youtube":
-                from live_sources import resolve_youtube_live
-                capture_source, broadcast_title = resolve_youtube_live(self.source)
-                with self._lock:
-                    self.label = broadcast_title
             cap = cv2.VideoCapture(capture_source)
             if not cap.isOpened():
                 raise ValueError("Cannot open source. Check file path or camera permissions / camera index.")
