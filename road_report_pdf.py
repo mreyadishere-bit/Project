@@ -144,6 +144,24 @@ def build_road_pdf(snapshot,report,events,simulation=None,surveyed=None):
                 "is not evidence of external geometric accuracy; "
                 "all world-unit estimates should remain provisional.",
                 styles["small"]))
+        if (checkpoint or {}).get("status")=="independently_checked":
+            candidate_events=surveyed.get("calibrated_interaction_review") or []
+            story.append(_p("Ground-plane approach review (screening only)",styles["h"]))
+            if not candidate_events:
+                story.append(_p("No sustained close-approach screening candidate met the model thresholds. This is not proof of a safe road.",styles["small"]))
+            for candidate in candidate_events[:8]:
+                story.append(_p(
+                    f"Video {candidate['video_second']:.1f} s: person track {candidate['person_track']} "
+                    f"and {candidate['vehicle_class']} track {candidate['vehicle_track']}; "
+                    f"{candidate['supporting_time_bins']} supporting time bins. "
+                    f"Constant-velocity ground-point minimum distance approximation: "
+                    f"{candidate['model_closest_point_distance_m']} m.",
+                    styles["body"]))
+            story.append(_p(
+                "These results come from simplified constant-velocity extrapolation "
+                "of tracker ground-contact points. They are not measured collision events, "
+                "validated TTC/PET, or proof that physical traffic controls are required.",
+                styles["small"]))
         speed=measurement.get("median_track_speed_kmh")
         story.append(_p(
             f"Tracked objects with enough valid surveyed-plane samples: "
