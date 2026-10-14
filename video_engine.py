@@ -22,6 +22,7 @@ from scene_intelligence import image_motion, scene_diagnostics, diagnostic_event
 from insight_engine import EvidenceAccumulator
 from traffic_geometry import RoadCalibration, CrossingCounter, ground_kinematics
 from road_tracking import RoadTracker, model_detections
+from proximity_indicators import assess_proximity
 
 BASE = Path(__file__).resolve().parent
 OUTPUTS = BASE / "outputs"
@@ -29,7 +30,7 @@ LIVE_STREAM_SLOTS = threading.BoundedSemaphore(1)  # public hosted live CPU infe
 ROAD_CLASSES = ("person", "car", "motorcycle", "bus", "truck", "bicycle", "traffic light", "stop sign")
 VEHICLES = {"car", "motorcycle", "bus", "truck", "bicycle"}
 SUMMARY_FIELDS = ["video_second", "frame_number", "people", "vehicles", "cars", "buses", "trucks", "motorcycles", "bicycles", "traffic_lights", "stop_signs", "all_objects"]
-OBJECT_FIELDS = ["video_second", "frame_number", "track_id", "class", "confidence", "x1", "y1", "x2", "y2", "center_x", "center_y", "direction", "image_motion_px_s", "calibrated_speed_kmh", "world_x_m", "world_y_m", "heading_deg", "observed_at_utc"]
+OBJECT_FIELDS = ["video_second", "frame_number", "track_id", "class", "confidence", "x1", "y1", "x2", "y2", "center_x", "center_y", "direction", "image_motion_px_s", "calibrated_speed_kmh", "world_x_m", "world_y_m", "heading_deg", "observed_at_utc", "risk_level", "risk_basis", "nearest_distance_m", "closing_speed_kmh"]
 EVENT_FIELDS = ["video_second", "event_type", "title", "description", "level"]
 CROSSING_FIELDS = ["second", "track_id", "class", "direction"]
 
@@ -236,6 +237,11 @@ class VideoJob:
         self.scene = {}
         self.recent_events: deque[dict] = deque(maxlen=100)
         self.total_events = 0
+        self.proximity_pair_history = {}
+        self.latest_proximity = {"level": "unknown", "pairs": [], "measured_pairs": 0, "image_review_pairs": 0, "closest_m": None}
+        self.proximity_counts = Counter()
+        self.proximity_moments = deque(maxlen=24)
+        self._last_proximity_moment = float('-inf')
         self.motion_samples = 0
         self.mean_apparent_speed = 0.0
         self.mean_calibrated_speed = 0.0
@@ -293,6 +299,9 @@ class VideoJob:
                 "detection_roi": self.settings.roi_rect,
                 "inference_backend": getattr(self, "inference_backend", "PyTorch"),
                 "scene": dict(self.scene), "recent_events": list(self.recent_events),
+                "proximity": dict(self.latest_proximity),
+                "proximity_counts": dict(self.proximity_counts),
+                "proximity_moments": list(self.proximity_moments),
                 "total_events": self.total_events, "mean_apparent_speed": self.mean_apparent_speed,
                 "mean_calibrated_speed": self.mean_calibrated_speed,
                 "calibrated_speed_samples": self.calibrated_speed_samples,
@@ -514,6 +523,10 @@ class VideoJob:
                                 "world_x_m": world_x, "world_y_m": world_y,
                                 "heading_deg": heading, "observed_at_utc": now_iso,
                             })
+                    proximity = assess_proximity(
+                        detections, frame.shape[1], frame.shape[0], seconds,
+                        self.proximity_pair_history,
+                    )
                     counts = frame_counts(detections)
                     with self._lock:
                         crossing_events = self.crossings.observe(detections, frame.shape[1],frame.shape[0],seconds)
@@ -576,6 +589,21 @@ class VideoJob:
                         self.analyzed_frames += 1
                         self.video_second = seconds
                         self.detected_now = counts
+                        self.latest_proximity = proximity
+                        if proximity["pairs"]:
+                            self.proximity_counts[proximity["level"]] += 1
+                            if (seconds - self._last_proximity_moment >= 4.0
+                                    and len(self.proximity_moments) < 24):
+                                strongest = proximity["pairs"][0]
+                                self.proximity_moments.append({
+                                    "second": round(seconds, 1),
+                                    "level": strongest["level"],
+                                    "type": strongest["type"],
+                                    "distance_m": strongest["distance_m"],
+                                    "closing_kmh": strongest["closing_kmh"],
+                                    "basis": strongest["basis"],
+                                })
+                                self._last_proximity_moment = seconds
                         self.scene = {k: v for k, v in diag.items() if k != "proximity_pairs"}
                         self.total_events += len(new_events)
                         self.recent_events.extend(new_events)
