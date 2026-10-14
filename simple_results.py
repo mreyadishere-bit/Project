@@ -39,6 +39,13 @@ def show_results(job,snap):
     m3.metric("Frames analyzed",f"{snap.get('analyzed_frames',0):,}")
     m4.metric("Frames with detections",
               f"{snap.get('detected_frames',0)}/{max(1,snap.get('analyzed_frames',0))}")
+    if snap.get("detail_scans_attempted",0):
+        st.caption(
+            f"Additional small-object analysis: {snap['detail_scans_attempted']} "
+            f"focused scans found {snap.get('additional_detail_candidate_boxes',0)} "
+            "extra detection candidate boxes after duplicate filtering. "
+            "These are not verified new vehicles; false positives remain possible."
+        )
     if snap.get("analyzed_frames",0) >= 10 and snap.get("detected_frames",0)<.40*snap["analyzed_frames"]:
         st.warning("Detection confidence is low for this footage: objects were not found in most sampled frames. The number of vehicles is likely an undercount. Do not treat these measurements as ground truth.")
     with st.container(border=True):
