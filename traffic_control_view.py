@@ -320,6 +320,10 @@ def show_concept(job, snapshot, interaction_candidates, *, key="traffic_control"
                      "Change range across trials":str(result["paired_changes_range"]),
                      "Valid comparisons":result["n"]})
     st.dataframe(rows,use_container_width=True,hide_index=True)
+    from traffic_robustness import explain_tradeoffs
+    st.markdown("**What these model experiments suggest**")
+    for sentence in explain_tradeoffs(robustness):
+        st.write("• "+sentence)
     st.caption(robustness["disclaimer"])
     st.download_button("Download sensitivity trials (JSON)",
                        json.dumps(robustness,indent=2),
