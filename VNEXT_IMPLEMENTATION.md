@@ -147,6 +147,31 @@ This does **not** replace surveying or establish exact 3D scene geometry
 outside the planar patch. A fully autonomous 3D reconstruction still needs
 reliable depth/segmentation, camera intrinsics and road measurements.
 
+## Recorded-video small-object detection follow-up
+
+The YOLO full-frame detector remains the ground truth *source of its own
+observations*, not a certified real-world object count. On a configured
+recorded-video interval (default one pass per eight analyzed frames), a
+supplemental **alternating overlapping high-detail tile** of the road's
+upper image region runs through the same free model. Its detections are
+mapped back to the original source pixels and class-aware overlap merging
+suppresses duplicates, before the merged boxes reach the tracker.
+
+- An additional tile NEVER replaces, removes, or artificially boosts
+  original full-frame detections.
+- Live streams skip detail scanning to avoid additional inference latency.
+- Failed optional passes preserve the primary frame detections.
+- The results page discloses the number of attempted additional passes and
+  additional candidate boxes — these are **not verified extra vehicles**.
+- Because this uses extra model inference it will incur a measurable CPU
+  performance cost (up to about one extra inference for every eight
+  analyzed recording frames). Optimize the interval only against
+  actual speed/precision measurements.
+- Per-source improvements in precision and recall remain **unmeasured**
+  until the labeled frame QA workflow evaluates baseline and new outputs.
+- Tests: source-coordinate restoration, preserving primary boxes,
+  class-consistent duplicate merging, blank frames and stable tracker IDs.
+
 ## Explicitly NOT finished
 
 The site is NOT a photogrammetric digital twin of arbitrary footage. A monocular
