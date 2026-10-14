@@ -62,7 +62,7 @@ show_results(job,snap)
             self.assertFalse(app.exception,
                 f"Main completed-video results could not render: {app.exception}")
             buttons=[b for b in app.button
-                     if "Generate interactive 3D crossing" in b.label]
+                     if "Run hypothetical 3D crossing and signals" in b.label]
             self.assertEqual(len(buttons),1,
                              "Results must offer a user-clickable 3D simulation")
             buttons[0].click().run(timeout=60)
