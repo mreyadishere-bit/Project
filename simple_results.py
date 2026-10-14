@@ -120,19 +120,41 @@ def show_results(job,snap):
             st.caption("Evidence status: "+r["confidence"]+" · Priority: "+r["priority"])
             st.caption("Check before construction: "+r["verify"])
 
-    st.markdown("### Explore a working 3D traffic-control concept")
-    st.caption("The original video stays real; the new 3D scenario follows its own hypothetical signal schedule because an intervention changes traffic timing. Vehicles stop and start, pedestrians wait, then cross on WALK.")
-    if st.button("Generate interactive 3D crossing & signal simulation",type="primary",
-                 use_container_width=True,key="control_sim_"+job.id):
-        st.session_state["control_sim_active_"+job.id]=True
-    if st.session_state.get("control_sim_active_"+job.id):
-        from traffic_control_view import show_concept
-        show_concept(job,snap,interaction_events,key="control_"+job.id)
-
-    with st.expander("Survey a road patch · Calibrate real dimensions and explore 3D (optional)",
+    st.markdown("### Explore the road in interactive 3D")
+    with st.expander("Improve 3D alignment with actual measured road dimensions (optional)",
                      expanded=False):
         from road_calibration_ui import show_calibration
         show_calibration(job,snap)
+
+    surveyed=st.session_state.get("surveyed_road_"+job.id)
+    if surveyed:
+        from traffic_geometry import RoadCalibration
+        cal_data=surveyed["calibration"]
+        calibration=RoadCalibration(
+            tuple(tuple(p) for p in cal_data["points"]),
+            cal_data["width_m"],cal_data["length_m"])
+        st.success("A surveyed source-camera road patch is available. The primary 3D viewer can now use the actual recorded road image and measured patch geometry instead of the generic example.")
+        if st.button("Open camera-aligned 3D scene for this road",
+                     type="primary",use_container_width=True,
+                     key="road_aligned_open_"+job.id):
+            st.session_state["road_aligned_active_"+job.id]=True
+        if st.session_state.get("road_aligned_active_"+job.id):
+            from calibrated_scene_view import show_surveyed_scene
+            show_surveyed_scene(job,snap,calibration,
+                                surveyed["camera_fov_deg"])
+        st.caption("The camera-aligned scene uses only the calibrated flat road patch. Surrounding 3D structures are not invented. The independent fifth-point check determines whether the geometry has external validation.")
+    else:
+        st.info("Source-specific, metrically aligned 3D needs measured road reference geometry. Without it, only an explicitly labeled hypothetical traffic-control scenario can be shown.")
+    with st.expander("Explore a generic traffic-light and pedestrian-crossing concept (not reconstructed from this road)",
+                     expanded=not bool(surveyed)):
+        st.caption("This illustrative 3D model has its own hypothetical signal schedule. Vehicle movement and pedestrian crossing respond to the simulated traffic controls, not to the real video's recorded outcomes.")
+        if st.button("Run hypothetical 3D crossing and signals",
+                     use_container_width=True,key="control_sim_"+job.id):
+            st.session_state["control_sim_active_"+job.id]=True
+        if st.session_state.get("control_sim_active_"+job.id):
+            from traffic_control_view import show_concept
+            show_concept(job,snap,interaction_events,key="control_"+job.id)
+
     with st.expander("Measure the AI's accuracy against labeled frames (optional)"):
         st.write("Actual precision, recall and F1 require manually labeled ground-truth boxes. Unlabeled video frames are excluded completely.")
         st.download_button("Download labeling template",
