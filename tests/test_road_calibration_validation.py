@@ -21,6 +21,10 @@ class IndependentCalibrationTests(unittest.TestCase):
         self.assertEqual(out["status"],"failed_independent_check")
         self.assertGreater(out["error_m"],1.5)
 
+    def test_fifth_point_cannot_reuse_a_fitted_corner(self):
+        with self.assertRaisesRegex(ValueError,"independent"):
+            validate_checkpoint(self.cal,(.2,.8),(0,0),1000,750)
+
     def test_outside_surveyed_patch_rejected(self):
         with self.assertRaises(ValueError):
             validate_checkpoint(self.cal,(.5,.58),(100,500),1000,750)
