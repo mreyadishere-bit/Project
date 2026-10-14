@@ -116,6 +116,26 @@ class TestRoadTracker(unittest.TestCase):
             detail_pass=True,detail_side=0)
         self.assertEqual(len(found),1)
 
+    def test_failed_detail_pass_keeps_full_frame_detections(self):
+        import numpy as np
+        frame=np.zeros((480,800,3),dtype="uint8")
+        class FaultyDetailModel(Model):
+            def predict(self,image,**kwargs):
+                if image.shape[1]<800:
+                    raise RuntimeError("Extra detail backend out of memory")
+                return [type("Result",(),{
+                    "boxes":Boxes([[110,200,165,250]]),"names":self.names
+                })()]
+        tracker=RoadTracker()
+        found,_,_=model_detections(
+            FaultyDetailModel(),frame,image_size=960,confidence=.12,
+            class_ids=[2],device="cpu",tracker=tracker,
+            detail_pass=True)
+        self.assertEqual(len(found),1)
+        self.assertEqual(found[0]["bounds"],(110.,200.,165.,250.))
+        self.assertEqual(tracker.last_detail_added,0)
+        self.assertTrue(tracker.last_detail_attempt)
+
     def test_occasional_empty_detections_do_not_erase_future_matches(self):
         import numpy as np
         model=Model(); tracker=RoadTracker(max_age=5)
