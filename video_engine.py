@@ -223,6 +223,8 @@ class VideoJob:
         self.empty_detection_frames = 0
         self.detection_confidence_sum = 0.0
         self.detection_count = 0
+        self.detail_scans_attempted = 0
+        self.detail_candidate_boxes = 0
         self.actual_source_fps = 0.0
         self.effective_sample_fps = 0.0
         self.scene = {}
@@ -275,6 +277,8 @@ class VideoJob:
                 "processing_fps": self.processing_fps, "device": self.device,
                 "inference_ms_avg": round(self.inference_ms_avg,1),
                 "empty_detection_frames": self.empty_detection_frames,
+                "detail_scans_attempted": self.detail_scans_attempted,
+                "additional_detail_candidate_boxes": self.detail_candidate_boxes,
                 "average_detection_confidence": round(self.detection_confidence_sum/self.detection_count,3) if self.detection_count else None,
                 "source_video_fps": self.actual_source_fps,
                 "effective_sample_fps": self.effective_sample_fps,
@@ -450,6 +454,9 @@ class VideoJob:
                         detail_pass=detail_pass,
                         detail_side=self.analyzed_frames//max(1,detail_interval))
                     inference_ms = (time.monotonic()-started_inference)*1000
+                    with self._lock:
+                        self.detail_scans_attempted+=int(bool(getattr(road_tracker,"last_detail_attempt",False)))
+                        self.detail_candidate_boxes+=int(getattr(road_tracker,"last_detail_added",0))
                     detections = []
                     apparent_speeds = []
                     calibrated_speeds = []
