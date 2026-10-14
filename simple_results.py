@@ -5,6 +5,7 @@ import csv
 import streamlit as st
 import pandas as pd
 from road_advice import road_report
+from premium_ui import section, metrics, issue, recommendation, legend, notice
 
 
 @st.cache_data(show_spinner=False,max_entries=12,ttl=1800)
@@ -58,16 +59,25 @@ def show_results(job,snap):
     story=_cached_road_report(json.dumps(evidence,sort_keys=True,default=str),
                               snap.get("label","video"),str(objects_path) if objects_path else None,
                               source_size,source_mtime)
-    st.markdown("## Your road, understood.")
-    st.caption("Results are based on detected objects across the uploaded video—not assumptions about an unseen accident.")
+    section("Your road at a glance", "Clear observations from the recording, with uncertainty shown wherever the camera cannot measure real-world distances.", kicker="Analysis overview")
 
     total=int(crossings.get("total_passed",0))
-    m1,m2,m3,m4=st.columns(4)
-    m1.metric("Vehicles passed the line",total,help="Only tracked vehicles that crossed the chosen counting line, not all vehicles ever seen.")
-    m2.metric("Vehicles at peak",snap.get("max_vehicles",0),help="Largest number visible in a sampled frame.")
-    m3.metric("Frames analyzed",f"{snap.get('analyzed_frames',0):,}")
-    m4.metric("Frames with detections",
-              f"{snap.get('detected_frames',0)}/{max(1,snap.get('analyzed_frames',0))}")
+    proximity=snap.get("proximity") or {}
+    measured=proximity.get("closest_m")
+    metrics([
+        ("Vehicles passing count line", total, "Tracked crossings, not unique vehicles everywhere"),
+        ("Peak vehicles visible", snap.get("max_vehicles",0), "Highest observed sampled-frame count"),
+        ("Frames inspected", f"{snap.get('analyzed_frames',0):,}", "Samples spread across the recording"),
+        ("Frames containing detections",
+         f"{snap.get('detected_frames',0)}/{max(1,snap.get('analyzed_frames',0))}",
+         "Unobserved objects may still exist"),
+        ("Closest measured gap", f"{measured:.1f} m" if isinstance(measured,(int,float)) else "Not measured",
+         "Only available with calibrated ground coordinates"),
+    ])
+    legend()
+    if not isinstance(measured,(int,float)):
+        notice("Actual vehicle gaps and physical speeds are unknown without a surveyed camera or depth sensor. Yellow overlay markers are review cues, not verified danger.")
+
     if snap.get("detail_scans_attempted",0):
         st.caption(
             f"Additional small-object analysis: {snap['detail_scans_attempted']} "
@@ -78,12 +88,12 @@ def show_results(job,snap):
     if snap.get("analyzed_frames",0) >= 10 and snap.get("detected_frames",0)<.40*snap["analyzed_frames"]:
         st.warning("Detection confidence is low for this footage: objects were not found in most sampled frames. The number of vehicles is likely an undercount. Do not treat these measurements as ground truth.")
     with st.container(border=True):
-        st.markdown("### What the AI observed")
+        st.markdown("### In plain language")
         st.write(story["summary"])
         st.caption("Road context: "+story["context"]["label"]+" · "+story["context"]["basis"])
         st.caption("Cars crossing the yellow line, objects visible simultaneously and tracking IDs are different counts.")
 
-    st.markdown("### Your analyzed video")
+    section("Video analysis", "Play the annotated recording. Colored boxes indicate measured proximity tiers or unverified review cues.", kicker="Video evidence")
     if snap.get("video_ready") and job.video_file.is_file():
         st.video(str(job.video_file),format="video/mp4")
         st.caption("Overlay video contains sampled frames spread over the original timeline. YOLO annotations are model estimates.")
@@ -95,7 +105,7 @@ def show_results(job,snap):
     elif snap.get("best_preview_jpeg"):
         st.image(snap["best_preview_jpeg"],caption="Analyzed video frame",use_container_width=True)
 
-    st.markdown("### Traffic through time")
+    section("Traffic over time", "How many vehicles and people appeared in the sampled frames.", kicker="Movement overview")
     curve=_summary_curve(job.summary_file)
     if curve is not None:
         st.line_chart(curve,height=240,use_container_width=True)
@@ -111,15 +121,19 @@ def show_results(job,snap):
     interaction_study=candidate_site_review(interaction_events,evidence)
     if interaction_study:
         story["recommendations"].insert(0,interaction_study)
-    st.markdown("### Events worth reviewing")
+    section("Moments worth reviewing", "Time-stamped observations, not confirmed collisions or accidents.", kicker="Detected issues")
     if interaction_events:
         st.write(f"{len(interaction_events)} time-localized pedestrian/vehicle review candidate(s). These are image-plane proximity observations — NOT confirmed accidents, near misses, or unauthorized crossings.")
         for i,event in enumerate(interaction_events[:8],1):
             with st.container(border=True):
-                st.markdown(f"**{i}. Possible shared-space interaction · {event['video_second']:.1f}s**")
-                st.caption(f"Sampled window {event['start_second']:.1f}–{event['end_second']:.1f}s · {event['frame_count']} supporting frames · IDs {event['person_track']} and {event['vehicle_track']}")
-                st.write(event["explanation"])
-                if st.button(f"Watch supporting video at {event['video_second']:.1f}s",
+                issue(
+                    "Pedestrian and vehicle appeared close in the frame",
+                    event["explanation"],
+                    level="caution", label="Needs review",
+                    evidence=f"At {event['video_second']:.1f}s · {event['frame_count']} supporting frames · Camera-space observation",
+                    action="Inspect the original footage and verify road geometry before concluding that a hazardous interaction occurred.",
+                )
+                if st.button(f"Inspect moment · {event['video_second']:.1f}s",
                              key=f"review_event_{job.id}_{i}"):
                     st.session_state["review_timestamp_"+job.id]=max(0,int(event["video_second"]-2))
         chosen_time=st.session_state.get("review_timestamp_"+job.id)
@@ -169,28 +183,21 @@ def show_results(job,snap):
             "confidence":"Recorded tracker image motion, needs manual verification",
             "simulation_option":"inspection",
         })
-    st.markdown("### This exact road · Evidence and potential improvements")
+    section("Inspect the actual road", "The source camera view remains unchanged alongside a highlighted observation.", kicker="Location evidence")
     st.caption("The scene on both sides is taken from YOUR recorded road; only the "
                "evidence location is outlined. No invented highway, yellow circles, "
                "simulated cars, or unverified construction.")
     display_source_review(job,review_items)
 
-    st.markdown("### Recommendations supported by this footage")
+    section("Suggested next steps", "Every recommendation is linked to observed evidence and requires field verification.", kicker="Engineering review")
     st.caption("Only video-backed review suggestions appear here. No automatic pedestrian crossing or speed limit is proposed without supporting field evidence.")
     for i,r in enumerate(story["recommendations"],1):
         with st.container(border=True):
-            st.markdown(f"#### {i}. {r['title']}")
-            st.markdown("**What we actually measured**")
-            st.write(r["evidence"])
-            st.markdown("**Why it matters**")
-            st.write(r["reason"])
-            st.markdown("**Suggested next step**")
-            st.write(r["action"])
-            st.caption("Expected benefit: "+r["expected_benefit"])
-            st.caption("Evidence status: "+r["confidence"]+" · Priority: "+r["priority"])
-            st.caption("Check before construction: "+r["verify"])
+            recommendation(r)
+            st.caption("Expected improvement: "+str(r.get("expected_benefit","Not measured"))+
+                       " · Evidence quality: "+str(r.get("confidence","Requires review")))
 
-    st.markdown("### Explore the road in interactive 3D")
+    section("Explore in 3D", "Inspect a modeled scene separately from the original camera evidence. Physical accuracy requires surveyed geometry.", kicker="Interactive road studio")
     with st.expander("Improve 3D alignment with actual measured road dimensions (optional)",
                      expanded=False):
         from road_calibration_ui import show_calibration
