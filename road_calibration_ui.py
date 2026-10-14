@@ -91,6 +91,13 @@ def show_calibration(job,snapshot):
         confirmed=st.checkbox("I checked these four physical road-plane corners and dimensions; "
                               "I understand a camera-only reconstruction cannot reveal unseen geometry.",
                               key="survey_confirmation_"+job.id)
+        st.caption("Optional independent 5th checkpoint: a surveyed point NOT used among the four corners. It checks whether the fitted camera-to-ground mapping is trustworthy away from the input corners.")
+        use_check=st.checkbox("I independently surveyed a fifth road-plane point",key="fifth_check_"+job.id)
+        cp1,cp2,cp3,cp4=st.columns(4)
+        cp_x=cp1.number_input("Checkpoint image X %",0.,100.,50.,step=.5,disabled=not use_check,key="cp_x_"+job.id)
+        cp_y=cp2.number_input("Checkpoint image Y %",0.,100.,60.,step=.5,disabled=not use_check,key="cp_y_"+job.id)
+        cp_world_x=cp3.number_input("Surveyed world X (m)",0.,100.,4.,step=.5,disabled=not use_check,key="cp_wx_"+job.id)
+        cp_world_y=cp4.number_input("Surveyed world Y (m)",0.,1000.,12.,step=.5,disabled=not use_check,key="cp_wy_"+job.id)
         submitted=st.form_submit_button("Validate surveyed 3D calibration",type="primary")
     if submitted:
         if not confirmed:
@@ -105,12 +112,23 @@ def show_calibration(job,snapshot):
                 if pose["reprojection_rmse_px"]>6:
                     raise ValueError("Perspective fit is too uncertain (camera reprojection > 6 px). "
                                      "Check corner order, FOV and whether the road is flat.")
+                checkpoint=None
+                if use_check:
+                    from road_calibration_validation import validate_checkpoint
+                    checkpoint=validate_checkpoint(calibration,
+                        (cp_x/100,cp_y/100),(cp_world_x,cp_world_y),w,h)
+                    if checkpoint["status"]!="independently_checked":
+                        raise ValueError(
+                            "Fifth-point check failed: ground mismatch "+
+                            f"{checkpoint['error_m']:.2f} metres. Calibration cannot be independently validated. "
+                            "Recheck road corners and measured dimensions.")
                 report=calibrated_tracks(objects,calibration,w,h)
                 st.session_state[key]={
                     "calibration":{"points":points,"width_m":float(width_m),
                                    "length_m":float(length_m)},
                     "camera_fov_deg":float(fov),
                     "reprojection_error_px":pose["reprojection_rmse_px"],
+                    "independent_checkpoint":checkpoint,
                     "tracks_report":report,
                 }
                 st.success("Calibrated surveyed road plane. Detector has NOT been rerun; "
@@ -126,6 +144,11 @@ def show_calibration(job,snapshot):
              caption="Your four surveyed corners on the ORIGINAL camera frame. "
                      "Do not treat unmeasured surrounding scenery as reconstructed geometry.",
              use_container_width=True)
+    if result.get("independent_checkpoint"):
+        check=result["independent_checkpoint"]
+        st.success(f"Independent ground checkpoint passed with {check['error_m']:.2f} m discrepancy. This checks one point only, not every part of the road.")
+    else:
+        st.warning("No independent fifth-point verification. Four fitted corners and low fit error alone do not prove real-world accuracy; treat displayed metric values as provisional.")
     st.caption(f"Camera reprojection RMSE: {result['reprojection_error_px']} pixels; "
                f"survey patch: {cal.width_m:g} × {cal.length_m:g} metres. "
                "The FOV remains estimated unless independently known.")
