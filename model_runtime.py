@@ -19,9 +19,11 @@ def load_detector(model_name, image_size, *, use_openvino=False):
     import os
     try:
         import torch
-        if not torch.cuda.is_available():
-            torch.set_num_threads(min(2,max(1,os.cpu_count() or 1)))
-    except (ImportError,RuntimeError):
+        cuda_available=bool(torch.cuda.is_available()) if hasattr(torch,"cuda") else False
+        limit_threads=getattr(torch,"set_num_threads",None)
+        if not cuda_available and callable(limit_threads):
+            limit_threads(min(2,max(1,os.cpu_count() or 1)))
+    except (ImportError,RuntimeError,AttributeError):
         pass
     try:
         import cv2
