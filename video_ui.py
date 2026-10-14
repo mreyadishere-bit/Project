@@ -15,7 +15,7 @@ import pandas as pd
 import streamlit as st
 
 from ui_theme import apply_theme
-from video_engine import VideoJob, VideoSettings, OUTPUTS
+from video_engine import VideoJob, VideoSettings, OUTPUTS, ANALYSIS_FPS_OPTIONS
 from live_sources import canonical_youtube_live_url
 from public_cameras import get_camera, camera_choices
 from results_ui import results_page
@@ -208,7 +208,7 @@ def source_and_settings(hosted: bool, running: bool):
                 if preset == "Custom":
                     model = st.selectbox("Detection model", ["yolo26n.pt", "yolo26s.pt", "yolo26m.pt"],
                                          disabled=running)
-                    fps = st.select_slider("Frames analyzed / video second", [1, 2, 3, 5, 10, 15, 30],
+                    fps = st.select_slider("Frames analyzed / video second", list(ANALYSIS_FPS_OPTIONS),
                                            value=5, disabled=running)
                     image_size = st.selectbox("Inference image size", [416, 512, 640, 768, 960, 1280],
                                               index=2, disabled=running)
