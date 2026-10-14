@@ -68,6 +68,32 @@ class CalibratedVideoTests(unittest.TestCase):
             self.assertAlmostEqual(observed[6],3+2.4*observed[0],delta=.5)
             self.assertLess(scene["metric_scene"]["reprojection_rmse_px"],1)
 
+    def test_reused_id_is_split_after_occlusion_not_conflated_into_one_speed(self):
+        w,h,cal,K,rvec,tvec=known_survey()
+        with tempfile.TemporaryDirectory() as temp:
+            file=Path(temp)/"detections.csv"
+            with file.open("w",encoding="utf-8",newline="") as out:
+                fields=["video_second","track_id","class","confidence","x1","x2","y2"]
+                writer=csv.DictWriter(out,fieldnames=fields)
+                writer.writeheader()
+                # Same tracker ID gets recycled after a long occlusion, but
+                # two actual motions at different speeds remain separate.
+                for first,initial,speed in ((0.,2.,1.5),(8.,6.,3.0)):
+                    for j in range(14):
+                        t=first+j*.18
+                        world=np.array([[4.,initial+speed*j*.18,0]],np.float64)
+                        point,_=cv2.projectPoints(world,rvec,tvec,K,None)
+                        x,y=map(float,point.reshape(-1))
+                        writer.writerow(dict(video_second=t,track_id="33",**{"class":"car"},
+                            confidence=.96,x1=x-12,x2=x+12,y2=y))
+            summary=calibrated_tracks(file,cal,w,h,min_support=3)
+            self.assertEqual(summary["accepted_track_count"],2)
+            self.assertEqual([x["episode"] for x in summary["tracks"]],[0,1])
+            speed=[x["median_speed_kmh"] for x in summary["tracks"]]
+            self.assertAlmostEqual(speed[0],5.4,delta=.6)
+            self.assertAlmostEqual(speed[1],10.8,delta=.8)
+            self.assertGreater(summary["rejected"].get("track_gap",0),0)
+
     def test_invalid_or_absent_calibration_cannot_report_speed(self):
         w,h,cal,*_=known_survey()
         with tempfile.TemporaryDirectory() as temp:
