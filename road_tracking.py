@@ -123,33 +123,90 @@ class RoadTracker:
         return out
 
 
-def model_detections(model,frame,*,image_size,confidence,class_ids,device,tracker=None):
-    """Prefer raw predictions, never silently drop detections for absent IDs."""
+def _extract_boxes(result, model, *, dx=0, dy=0):
+    """Decode every YOLO detection into full-source-frame coordinates."""
+    boxes=getattr(result,"boxes",None)
+    if boxes is None or not len(boxes):
+        return []
+    xyxy=boxes.xyxy.cpu().tolist()
+    confidences=boxes.conf.cpu().tolist()
+    classes=boxes.cls.int().cpu().tolist()
+    ids=(boxes.id.int().cpu().tolist()
+         if getattr(boxes,"id",None) is not None else [None]*len(xyxy))
+    names=getattr(result,"names",getattr(model,"names",{}))
+    observed=[]
+    for xy,score,cls,ident in zip(xyxy,confidences,classes,ids):
+        name=names[int(cls)] if isinstance(names,dict) else names[int(cls)]
+        observed.append({
+            "bounds":(float(xy[0])+dx,float(xy[1])+dy,
+                      float(xy[2])+dx,float(xy[3])+dy),
+            "cls":name,"confidence":float(score),"track_id":ident
+        })
+    return observed
+
+
+def _merge_multiscale(primary,detail,threshold=.44):
+    """Keep the primary full-frame boxes and add class-consistent tile discoveries.
+
+    Suppresses duplicate detections; never discards full-frame observations.
+    """
+    combined=list(primary)
+    for candidate in sorted(detail,key=lambda d:-d["confidence"]):
+        if any(old["cls"]==candidate["cls"]
+               and iou(old["bounds"],candidate["bounds"])>=threshold
+               for old in combined):
+            continue
+        combined.append(candidate)
+    return combined
+
+
+def model_detections(model,frame,*,image_size,confidence,class_ids,device,
+                     tracker=None,detail_pass=False,detail_side=0):
+    """Raw full-frame YOLO plus an optional low-duty high-detail crop pass.
+
+    A crop is deliberately used infrequently on recordings to reduce
+    small/distant vehicle undercount. It adds one inference pass, so the
+    setting is not for latency-constrained live cameras. The detector always
+    runs full-frame, and the extra pass cannot remove its detections.
+    """
     if callable(getattr(model,"predict",None)):
-        result=model.predict(frame,imgsz=image_size,conf=confidence,classes=class_ids,
-                             device=device,verbose=False)[0]
+        result=model.predict(frame,imgsz=image_size,conf=confidence,
+                             classes=class_ids,device=device,verbose=False)[0]
         raw=True
     else:
-        # Compatibility for offline model stubs and alternative trackers.
         result=model.track(frame,persist=True,tracker="bytetrack.yaml",
                            imgsz=image_size,conf=confidence,classes=class_ids,
                            device=device,verbose=False)[0]
         raw=False
-    boxes=getattr(result,"boxes",None)
-    if boxes is None or not len(boxes):
-        return [],result,raw
-    xyxy=boxes.xyxy.cpu().tolist()
-    scores=boxes.conf.cpu().tolist()
-    classes=boxes.cls.int().cpu().tolist()
-    ids=(boxes.id.int().cpu().tolist() if not raw and getattr(boxes,"id",None) is not None
-         else [None]*len(xyxy))
-    data=[]
-    names=getattr(result,"names",getattr(model,"names",{}))
-    for box,score,cls,ident in zip(xyxy,scores,classes,ids):
-        name=names[int(cls)] if isinstance(names,dict) else names[int(cls)]
-        data.append({"bounds":tuple(float(x) for x in box),"cls":name,
-                     "confidence":float(score),"track_id":ident})
+    data=_extract_boxes(result,model)
+    if raw and detail_pass:
+        height,width=frame.shape[:2]
+        if height>=240 and width>=360:
+            # Alternating overlapping left/right tiles increase the apparent
+            # size of distant traffic; the next tile pass covers the other side.
+            left=0 if detail_side%2==0 else int(width*.32)
+            right=int(width*.68) if detail_side%2==0 else width
+            bottom=max(2,int(height*.68))
+            crop=frame[:bottom,left:right]
+            if crop.shape[0]>=64 and crop.shape[1]>=120:
+                try:
+                    extra=model.predict(crop,imgsz=image_size,conf=confidence,
+                                        classes=class_ids,device=device,verbose=False)[0]
+                    discovered=_extract_boxes(extra,model,dx=left)
+                    # Only boxes physically inside the cropped source region.
+                    discovered=[d for d in discovered if
+                        d["bounds"][2]>d["bounds"][0] and
+                        d["bounds"][3]>d["bounds"][1] and
+                        d["bounds"][0]>=left-2 and
+                        d["bounds"][2]<=right+2 and
+                        d["bounds"][1]>=-2 and
+                        d["bounds"][3]<=bottom+2]
+                    data=_merge_multiscale(data,discovered)
+                except (RuntimeError,ValueError,OSError,ImportError):
+                    # Detail processing is a supplementary quality attempt.
+                    # Full-frame observations remain valid if its tile fails.
+                    pass
     if raw:
-        return tracker.update(data,frame.shape) if tracker is not None else data,result,raw
-    # Stub/legacy backend returned IDs; keep all YOLO boxes even if ID absent.
+        return (tracker.update(data,frame.shape)
+                if tracker is not None else data),result,raw
     return data,result,raw
