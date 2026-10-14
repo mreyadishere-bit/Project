@@ -7,6 +7,31 @@ import pandas as pd
 from road_advice import road_report
 
 
+@st.cache_data(show_spinner=False,max_entries=12,ttl=1800)
+def _cached_road_report(evidence_json,source,path,size,mtime_ns):
+    return road_report(json.loads(evidence_json),source,path)
+
+
+@st.cache_data(show_spinner=False,max_entries=12,ttl=1800)
+def _cached_interactions(path,width,height,size,mtime_ns):
+    from safety_interactions import find_interactions
+    return find_interactions(path,width,height)
+
+
+@st.cache_data(show_spinner=False,max_entries=12,ttl=1800)
+def _cached_stationary(path,width,height,size,mtime_ns):
+    from source_scene_evidence import stationary_review_candidates
+    return stationary_review_candidates(path,width,height)
+
+
+def _objects_stamp(path):
+    from pathlib import Path
+    f=Path(path)
+    if not f.is_file():return (0,0)
+    stat=f.stat()
+    return (stat.st_size,stat.st_mtime_ns)
+
+
 def _summary_curve(path,max_items=400):
     if not path.is_file():return None
     # Bounded-memory two-pass downsampling even for hours of footage.
@@ -28,7 +53,11 @@ def _summary_curve(path,max_items=400):
 def show_results(job,snap):
     evidence=snap.get("evidence") or {}
     crossings=snap.get("crossings") or {}
-    story=road_report(evidence,snap.get("label","video"),getattr(job,"objects_file",None))
+    objects_path=getattr(job,"objects_file",None)
+    source_size,source_mtime=_objects_stamp(objects_path)
+    story=_cached_road_report(json.dumps(evidence,sort_keys=True,default=str),
+                              snap.get("label","video"),str(objects_path) if objects_path else None,
+                              source_size,source_mtime)
     st.markdown("## Your road, understood.")
     st.caption("Results are based on detected objects across the uploaded video—not assumptions about an unseen accident.")
 
@@ -73,10 +102,10 @@ def show_results(job,snap):
     st.caption("Shows visible objects in sampled frames, not how many distinct cars passed.")
 
     # Evidence-linked, timestamped review events (not verified collisions).
-    from safety_interactions import find_interactions
-    interaction_events=find_interactions(
-        getattr(job,"objects_file",None),
-        snap.get("frame_width",0),snap.get("frame_height",0)
+    interaction_events=_cached_interactions(
+        str(objects_path) if objects_path else None,
+        snap.get("frame_width",0),snap.get("frame_height",0),
+        source_size,source_mtime
     )
     from road_scenarios import candidate_site_review
     interaction_study=candidate_site_review(interaction_events,evidence)
@@ -111,6 +140,20 @@ def show_results(job,snap):
                 st.warning("This event has a valid timestamp, but no browser-playable video preview is available.")
     else:
         st.info("No sustained pedestrian–vehicle image-overlap was established from the tracked frames. This does not mean the road is safe; the AI may have missed objects or the video may lack enough coverage.")
+
+    from source_scene_evidence import review_moments
+    from source_scene_view import display_source_review
+    stationary_events=_cached_stationary(
+        str(objects_path) if objects_path else None,
+        snap.get("frame_width",0),snap.get("frame_height",0),
+        source_size,source_mtime
+    )
+    review_items=review_moments(interaction_events,stationary_events)
+    st.markdown("### This exact road · Evidence and potential improvements")
+    st.caption("The scene on both sides is taken from YOUR recorded road; only the "
+               "evidence location is outlined. No invented highway, yellow circles, "
+               "simulated cars, or unverified construction.")
+    display_source_review(job,review_items)
 
     st.markdown("### Recommendations supported by this footage")
     st.caption("Only video-backed review suggestions appear here. No automatic pedestrian crossing or speed limit is proposed without supporting field evidence.")
@@ -152,15 +195,14 @@ def show_results(job,snap):
         st.caption("The camera-aligned scene uses only the calibrated flat road patch. Surrounding 3D structures are not invented. The independent fifth-point check determines whether the geometry has external validation.")
     else:
         st.info("Source-specific, metrically aligned 3D needs measured road reference geometry. Without it, only an explicitly labeled hypothetical traffic-control scenario can be shown.")
-    with st.expander("Explore a generic traffic-light and pedestrian-crossing concept (not reconstructed from this road)",
-                     expanded=not bool(surveyed)):
-        st.caption("This illustrative 3D model has its own hypothetical signal schedule. Vehicle movement and pedestrian crossing respond to the simulated traffic controls, not to the real video's recorded outcomes.")
-        if st.button("Run hypothetical 3D crossing and signals",
-                     use_container_width=True,key="control_sim_"+job.id):
-            st.session_state["control_sim_active_"+job.id]=True
-        if st.session_state.get("control_sim_active_"+job.id):
-            from traffic_control_view import show_concept
-            show_concept(job,snap,interaction_events,key="control_"+job.id)
+    # Deliberately do NOT render the generic signal simulator below a real
+    # urban-road recording. The old independent demo was mistaken for an AI
+    # reconstruction and could trigger unnecessary expensive CPU work.
+    # Its library code remains available for explicitly surveyed concepts.
+    if not surveyed:
+        st.caption("A source-matched 3D change needs checked road geometry. "
+                   "The previous unrelated straight-highway demo is not shown as "
+                   "an improvement to your urban road.")
 
     with st.expander("Measure the AI's accuracy against labeled frames (optional)"):
         st.write("Actual precision, recall and F1 require manually labeled ground-truth boxes. Unlabeled video frames are excluded completely.")
