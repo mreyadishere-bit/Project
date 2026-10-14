@@ -120,6 +120,12 @@ class LatestCameraFrames:
         self.capture.release()
 
 
+# These choices are shared by the hosted automatic profile and advanced UI.
+# A sampling rate of 3 and a 14-frame detail interval are valid CPU settings.
+ANALYSIS_FPS_OPTIONS = (1, 2, 3, 5, 10, 15, 30)
+DETAIL_SCAN_INTERVAL_OPTIONS = (0, 4, 6, 8, 12, 14, 16)
+
+
 @dataclass(frozen=True)
 class VideoSettings:
     model_name: str = "yolo26n.pt"
@@ -145,9 +151,9 @@ class VideoJob:
             raise ValueError("Invalid model")
         if not 0.1 <= settings.confidence <= 0.95:
             raise ValueError("Invalid confidence")
-        if settings.analysis_fps not in {1, 2, 5, 10, 15, 30}:
+        if settings.analysis_fps not in ANALYSIS_FPS_OPTIONS:
             raise ValueError("Invalid analysis rate")
-        if settings.detail_scan_every not in (0, 4, 6, 8, 12, 16):
+        if settings.detail_scan_every not in DETAIL_SCAN_INTERVAL_OPTIONS:
             raise ValueError("Invalid detail scan interval")
         if not 30 <= settings.camera_fov_deg <= 120:
             raise ValueError("Camera FOV outside supported range")
