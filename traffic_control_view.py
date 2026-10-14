@@ -248,6 +248,12 @@ def cached_simulation(inputs: ControlInputs):
     return simulate(inputs)
 
 
+@st.cache_data(show_spinner=False, max_entries=12)
+def cached_robustness(inputs: ControlInputs):
+    from traffic_robustness import assess_robustness
+    return assess_robustness(inputs,runs=5)
+
+
 def show_concept(job, snapshot, interaction_candidates, *, key="traffic_control"):
     observed = bool(interaction_candidates)
     st.markdown("### 3D road intervention — working traffic controls")
@@ -295,6 +301,30 @@ def show_concept(job, snapshot, interaction_candidates, *, key="traffic_control"
                     (" s" if "time" in key_name or "wait" in key_name else ""))
     st.caption("Other modeled outcomes: "+f"{baseline['pedestrians_completed']} → {managed['pedestrians_completed']} completed crossings; "+
                f"{baseline['vehicle_stopped_seconds']} → {managed['vehicle_stopped_seconds']} total vehicle stopped-seconds.")
+    robustness=cached_robustness(inputs)
+    st.markdown("#### Does the result persist across different traffic arrival patterns?")
+    st.caption("Five paired simulations with distinct random arrival sequences. Each pair has the same modeled demand before and after; ranges are sensitivity checks, NOT measured real-world confidence intervals.")
+    fields=[
+        ("Pedestrian waiting time (seconds)","mean_pedestrian_wait_s"),
+        ("Vehicle travel time (seconds)","mean_vehicle_travel_s"),
+        ("Peak vehicle queue (vehicles)","max_waiting_vehicles"),
+        ("Vehicles completing modeled road","vehicles_completed"),
+    ]
+    rows=[]
+    for title,identifier in fields:
+        result=robustness["metrics"][identifier]
+        rows.append({"Modeled quantity":title,
+                     "Before (median)":result["baseline_median"],
+                     "After (median)":result["managed_median"],
+                     "Paired change (median)":result["paired_change_median"],
+                     "Change range across trials":str(result["paired_changes_range"]),
+                     "Valid comparisons":result["n"]})
+    st.dataframe(rows,use_container_width=True,hide_index=True)
+    st.caption(robustness["disclaimer"])
+    st.download_button("Download sensitivity trials (JSON)",
+                       json.dumps(robustness,indent=2),
+                       file_name="traffic-control-sensitivity.json",
+                       mime="application/json",key=key+"_robustness")
     st.download_button("Download reproducible simulation (JSON)",json.dumps(model,indent=2),
         file_name="traffic-control-simulation.json",mime="application/json",
         key=key+"_download")
