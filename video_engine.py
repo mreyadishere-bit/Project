@@ -126,6 +126,7 @@ class VideoSettings:
     confidence: float = 0.18
     image_size: int = 640
     analysis_fps: int = 5   # file frames analysed per video second (approx.)
+    detail_scan_every: int = 8  # optional one extra small-object tile inference per N analyzed recording frames
     all_classes: bool = False
     save_video: bool = False
     meters_per_pixel: float | None = None   # legacy rough pixel scale
@@ -146,6 +147,8 @@ class VideoJob:
             raise ValueError("Invalid confidence")
         if settings.analysis_fps not in {1, 2, 5, 10, 15, 30}:
             raise ValueError("Invalid analysis rate")
+        if settings.detail_scan_every not in (0, 4, 6, 8, 12, 16):
+            raise ValueError("Invalid detail scan interval")
         if not 30 <= settings.camera_fov_deg <= 120:
             raise ValueError("Camera FOV outside supported range")
         if settings.roi_rect is not None:
@@ -437,10 +440,15 @@ class VideoJob:
                         roi_frame=frame[y_offset:max(y_offset+2,int(bottom*H)),
                                         x_offset:max(x_offset+2,int(right*W))]
                     started_inference = time.monotonic()
+                    detail_interval=self.settings.detail_scan_every
+                    detail_pass=(not self.is_live and detail_interval>0 and
+                                 self.analyzed_frames%detail_interval==0)
                     observations, tracked, raw_detector = model_detections(
                         model, roi_frame,image_size=self.settings.image_size,
                         confidence=self.settings.confidence,class_ids=class_ids,
-                        device=device,tracker=road_tracker)
+                        device=device,tracker=road_tracker,
+                        detail_pass=detail_pass,
+                        detail_side=self.analyzed_frames//max(1,detail_interval))
                     inference_ms = (time.monotonic()-started_inference)*1000
                     detections = []
                     apparent_speeds = []
