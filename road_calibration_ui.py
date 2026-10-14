@@ -154,7 +154,7 @@ def show_calibration(job,snapshot):
                "The FOV remains estimated unless independently known.")
     tracks=result["tracks_report"]
     a,b,c=st.columns(3)
-    a.metric("Tracks with speed evidence",tracks["accepted_track_count"])
+    a.metric("Continuous motion episodes",tracks["accepted_track_count"],help="A tracking ID can split into multiple episodes after gaps or jumps. This is NOT a unique-vehicle count.")
     b.metric("Median vehicle-track speed (km/h)",
              str(tracks["median_track_speed_kmh"]) if tracks["median_track_speed_kmh"] is not None
              else "Not reliable")
@@ -167,6 +167,22 @@ def show_calibration(job,snapshot):
         st.warning("No tracks with enough reliable samples remained within the surveyed road patch. "
                    "No speed can be reported for this recording.")
     st.caption(tracks["basis"]["note"])
+    rejected=tracks.get("rejected",{})
+    gaps=int(rejected.get("track_gap",0))
+    jumps=int(rejected.get("track_discontinuity",0))
+    if gaps or jumps:
+        st.info(
+            f"Tracking reliability: {gaps} temporal gap(s) and {jumps} implausible "
+            "position jump(s) were separated before estimating speeds. "
+            "Repeated episodes of the same tracker ID are not assumed to represent "
+            "one continuous vehicle journey."
+        )
+    st.caption(
+        "Evidence status: " +
+        ("independently checked at one surveyed point" if result.get("independent_checkpoint")
+         else "provisional four-corner survey without independent fifth-point validation")
+        + ". Estimates are limited to visible footpoints on the surveyed FLAT road patch."
+    )
     if (result.get("independent_checkpoint") or {}).get("status")=="independently_checked":
         from calibrated_conflicts import ground_interaction_candidates
         possible_approaches=ground_interaction_candidates(tracks)
