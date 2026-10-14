@@ -14,6 +14,20 @@ _LOCK=threading.Lock()
 
 
 def load_detector(model_name, image_size, *, use_openvino=False):
+    # Streamlit's shared CPUs throttle applications that oversubscribe
+    # PyTorch/OpenCV native worker pools. Bound parallelism per worker.
+    import os
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            torch.set_num_threads(min(2,max(1,os.cpu_count() or 1)))
+    except (ImportError,RuntimeError):
+        pass
+    try:
+        import cv2
+        cv2.setNumThreads(1)
+    except (ImportError,RuntimeError):
+        pass
     from ultralytics import YOLO
     model=YOLO(model_name)
     if not use_openvino:
