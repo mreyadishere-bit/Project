@@ -195,6 +195,7 @@ def show_results(job,snap):
                 "surveyed_ground_measurements": surveyed["tracks_report"] if surveyed else None,
                 "surveyed_ground_geometry": surveyed["calibration"] if surveyed else None,
                 "independent_ground_checkpoint": surveyed.get("independent_checkpoint") if surveyed else None,
+                "calibrated_ground_interaction_review": surveyed.get("calibrated_interaction_review") if surveyed else None,
                 "ground_measurements_validation": (
                     "independent surveyed checkpoint passed"
                     if surveyed and (surveyed.get("independent_checkpoint") or {}).get("status")=="independently_checked"
