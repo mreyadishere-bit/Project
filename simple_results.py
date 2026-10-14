@@ -171,7 +171,13 @@ def show_results(job,snap):
                 "context":story["context"],"kinematic_evidence":story["measurements"],
                 "interaction_review_candidates":interaction_events,
                 "surveyed_ground_measurements": surveyed["tracks_report"] if surveyed else None,
-                "surveyed_ground_geometry": surveyed["calibration"] if surveyed else None}
+                "surveyed_ground_geometry": surveyed["calibration"] if surveyed else None,
+                "independent_ground_checkpoint": surveyed.get("independent_checkpoint") if surveyed else None,
+                "ground_measurements_validation": (
+                    "independent surveyed checkpoint passed"
+                    if surveyed and (surveyed.get("independent_checkpoint") or {}).get("status")=="independently_checked"
+                    else "provisional / not independently checked"
+                )}
         from road_report_pdf import build_road_pdf
         try:
             pdf_bytes=build_road_pdf(
