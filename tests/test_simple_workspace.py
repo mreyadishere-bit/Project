@@ -29,6 +29,30 @@ class SimpleWorkspaceTests(unittest.TestCase):
         self.assertTrue(at.title)
         self.assertIn("Understand any road video",at.title[0].value)
 
+    def test_hosted_auto_profiles_are_accepted_by_video_engine(self):
+        """Both hardware profiles must be accepted before starting a worker."""
+        import sys
+        import types
+        from unittest.mock import patch
+        import video_engine
+        from simple_workspace import _automatic_settings
+
+        with tempfile.TemporaryDirectory() as td:
+            with patch.object(video_engine, "OUTPUTS", Path(td)), \
+                    patch("video_engine.threading.Thread") as mocked_thread:
+                for has_gpu in (False, True):
+                    with self.subTest(gpu=has_gpu):
+                        fake_torch = types.SimpleNamespace(
+                            cuda=types.SimpleNamespace(is_available=lambda: has_gpu)
+                        )
+                        with patch.dict(sys.modules, {"torch": fake_torch}):
+                            settings = _automatic_settings()
+                            job = video_engine.VideoJob("sample.mp4", settings)
+                        mocked_thread.return_value.start.assert_called()
+                        self.assertEqual(job.settings, settings)
+                        self.assertEqual(settings.analysis_fps, 10 if has_gpu else 3)
+                        self.assertEqual(settings.detail_scan_every, 8 if has_gpu else 14)
+
     @unittest.skipUnless(shutil.which("node"),"Node runtime missing")
     def test_scene_javascript_parses(self):
         m=re.search(r'<script type="module">([\s\S]*?)</script>',VIEWER)
