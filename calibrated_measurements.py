@@ -42,6 +42,9 @@ def calibrated_tracks(objects_path, calibration:RoadCalibration, width:int, heig
     accepted_count=defaultdict(int)
     observed_count=defaultdict(int)
     last_accepted_speed={}
+    track_segment=defaultdict(int)
+    # Track IDs may be recycled or switched after occlusion. Only a continuous
+    # episode may contribute to one trajectory and its speed statistics.
     ignored=defaultdict(int)
     rows=0
     with filepath.open(encoding="utf-8-sig",newline="") as handle:
@@ -70,17 +73,23 @@ def calibrated_tracks(objects_path, calibration:RoadCalibration, width:int, heig
             if xy is None:
                 ignored["outside_surveyed_plane"]+=1
                 continue
-            key=(kind,ident)
-            h=history[key]
+            root=(kind,ident)
+            h=history[root]
+            discontinuity=False
             if h and (timestamp<=h[-1][0] or timestamp-h[-1][0]>max_gap_s):
-                h.clear()
-            # Location jumps of a tracking ID should not become a speed spike.
-            if h:
+                discontinuity=True
+                ignored["track_gap"]+=1
+            # An implausible teleport is a new episode, NOT a measurement.
+            if h and not discontinuity:
                 dt=timestamp-h[-1][0]
                 instantaneous_kmh=3.6*hypot(xy[0]-h[-1][1],xy[1]-h[-1][2])/dt
                 if instantaneous_kmh>MAX_ACCEPTED_KMH[kind]*1.35:
                     ignored["track_discontinuity"]+=1
-                    h.clear()
+                    discontinuity=True
+            if discontinuity:
+                h.clear()
+                track_segment[root]+=1
+            key=(kind,ident,track_segment[root])
             observed_count[key]+=1
             # Bounded samples per ID even for hours-long video: decimate
             # uniformly and retain coverage across the timeline.
@@ -116,16 +125,16 @@ def calibrated_tracks(objects_path, calibration:RoadCalibration, width:int, heig
             h.append((timestamp,*xy))
     tracks=[]
     all_speeds=[]
-    for (kind,ident),items in sorted(measures.items()):
-        if accepted_count[(kind,ident)]<min_support:
+    for (kind,ident,episode),items in sorted(measures.items()):
+        if accepted_count[(kind,ident,episode)]<min_support:
             ignored["insufficient_track_support"]+=1
             continue
         speeds=[p["speed_kmh"] for p in items]
         med=median(speeds)
         all_speeds.extend(speeds)
         tracks.append({
-            "class":kind,"track_id":ident,
-            "accepted_samples":accepted_count[(kind,ident)],
+            "class":kind,"track_id":ident,"episode":episode,
+            "accepted_samples":accepted_count[(kind,ident,episode)],
             "sampled_measurements":len(items),
             "median_speed_kmh":round(med,1),
             "min_speed_kmh":round(min(speeds),1),
@@ -150,7 +159,7 @@ def calibrated_tracks(objects_path, calibration:RoadCalibration, width:int, heig
             "survey_length_m":calibration.length_m,
             "min_window_s":min_window_s,
             "min_support_samples":min_support,
-            "bounded_samples":"At most 512 speed samples and 400 path points per stable ID, decimated over time; medians approximate for long videos.",
+            "bounded_samples":"At most 512 speed samples and 400 path points per continuous track episode; medians are approximate for long videos.",
             "note":"Approximate tracked-footpoint ground speeds, NOT certified radar speed. "
                    "Sensitive to perspective, frame rate, footpoint accuracy, "
                    "occlusion and vehicle contact location. Not applicable to "
