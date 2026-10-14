@@ -12,21 +12,9 @@ import uuid
 import streamlit as st
 from video_engine import VideoJob, VideoSettings, OUTPUTS
 from simple_results import show_results
+from premium_ui import STYLE, brand, legend, notice
 
-STYLE="""
-<style>
-.block-container{max-width:1150px;padding-top:2rem;padding-bottom:4rem}
-html,body,[data-testid="stAppViewContainer"]{background:#f7f9fc}
-h1,h2,h3{letter-spacing:-.048em}
-h1{font-size:clamp(2rem,5vw,3.4rem)!important}
-[data-testid="stVerticalBlockBorderWrapper"] > div{border-color:#e3e9f2!important;border-radius:20px!important}
-div[data-testid="stMetric"]{background:white;border:1px solid #e2e8f1;border-radius:15px;padding:15px}
-.stButton>button[kind="primary"]{border-radius:14px;background:#2468c6;border:0;min-height:48px}
-[data-testid="stFileUploader"]{border-radius:18px}
-[data-testid="stAlert"]{border-radius:14px}
-@media(max-width:700px){.block-container{padding:1.2rem .9rem 3rem}h1{font-size:2.2rem!important}}
-</style>
-"""
+
 
 def _store_video(upload):
     ext=Path(upload.name).suffix.lower()
@@ -95,7 +83,16 @@ def _status(job):
                 pct=min(1,max(0,snap["video_second"]/snap["duration_seconds"]))
                 st.progress(pct,text=f"{pct:.0%} of video timeline inspected")
             if snap.get("preview_jpeg") and active:
-                st.image(snap["preview_jpeg"],caption="Current analyzed frame",use_container_width=True)
+                st.image(snap["preview_jpeg"],caption="Current analyzed frame · colors mark proximity review indicators",use_container_width=True)
+                legend()
+                nearby = snap.get("proximity") or {}
+                if nearby.get("pairs"):
+                    nearest = nearby["pairs"][0]
+                    if nearest.get("distance_m") is not None:
+                        st.caption(f"Calibrated gap: {nearest['distance_m']:.1f} m · "
+                                   f"Proximity tier: {nearest['level']} · Provisional, not a crash prediction.")
+                    else:
+                        st.caption("Yellow indicates image-space overlap for review. Actual distance and closing speed are not measurable from this uncalibrated footage.")
         if active and st.button("Stop analysis",key="simple_stop_"+job.id):
             job.stop()
         if state=="error" and not snap.get("analyzed_frames"):
@@ -106,10 +103,11 @@ def _status(job):
 
 
 def video_tab():
-    st.markdown(STYLE,unsafe_allow_html=True)
-    st.caption("SMART ROAD  /  AI VISION LAB")
-    st.title("Understand any road video.")
-    st.write("Upload traffic footage. Smart Road automatically analyzes movement, counts, and possible improvements—then shows the video and a scene-based simulation.")
+    st.markdown(STYLE, unsafe_allow_html=True)
+    brand()
+    st.caption("VIDEO INTELLIGENCE / SIMPLE WORKSPACE")
+    st.title("Understand any road video." if not st.session_state.get("simple_road_job") else "Your road, explained.")
+    st.write("Upload a road recording and discover what is actually visible: traffic movement, moments to review, and evidence-led improvements. No technical setup required.")
     job=st.session_state.get("simple_road_job")
     snap=job.snapshot() if job else None
     busy=bool(snap and snap["status"] in {
@@ -151,4 +149,4 @@ def video_tab():
             _status(current)
     _live()
     if not job:
-        st.caption("No calibration is assumed: physical speeds and exact road dimensions will not be invented from one camera.")
+        notice("Your recording stays the evidence source. Without measured camera geometry, the app shows image-only proximity review cues rather than invented distances, road speeds or collision probabilities.")
