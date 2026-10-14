@@ -445,8 +445,11 @@ class VideoJob:
                                         x_offset:max(x_offset+2,int(right*W))]
                     started_inference = time.monotonic()
                     detail_interval=self.settings.detail_scan_every
+                    # Keep optional high-detail scans within a CPU budget.
+                    # Extremely slow inference switches them off automatically.
                     detail_pass=(not self.is_live and detail_interval>0 and
-                                 self.analyzed_frames%detail_interval==0)
+                                 self.analyzed_frames%detail_interval==0 and
+                                 (self.analyzed_frames<12 or self.inference_ms_avg<600))
                     observations, tracked, raw_detector = model_detections(
                         model, roi_frame,image_size=self.settings.image_size,
                         confidence=self.settings.confidence,class_ids=class_ids,
