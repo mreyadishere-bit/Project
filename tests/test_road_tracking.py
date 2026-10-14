@@ -76,6 +76,46 @@ class TestRoadTracker(unittest.TestCase):
         self.assertEqual(first[0]["track_id"],second[0]["track_id"])
         self.assertNotEqual(second[0]["track_id"],second[1]["track_id"])
 
+    def test_budgeted_detail_detection_recovers_missing_distant_car(self):
+        import numpy as np
+        frame=np.zeros((480,800,3),dtype="uint8")
+        class ZoomModel(Model):
+            def __init__(self):
+                super().__init__()
+                self.calls=0
+            def predict(self,image,**kwargs):
+                self.calls+=1
+                # Full frame missed the tiny car. The cropped tile finds it.
+                xy=[] if image.shape[1]==800 else [[75,65,112,105]]
+                return [type("Result",(),{"boxes":Boxes(xy),"names":self.names})()]
+        model=ZoomModel()
+        found,_,raw=model_detections(
+            model,frame,image_size=960,confidence=.12,class_ids=[2],
+            device="cpu",tracker=RoadTracker(),detail_pass=True,detail_side=1)
+        self.assertTrue(raw)
+        self.assertEqual(model.calls,2)
+        self.assertEqual(len(found),1)
+        # Right tile begins at x=0.32*800 pixels.
+        self.assertAlmostEqual(found[0]["bounds"][0],.32*800+75)
+        self.assertEqual(found[0]["cls"],"car")
+        self.assertGreater(found[0]["track_id"],0)
+
+    def test_detail_nms_keeps_original_and_removes_repeated_crop_box(self):
+        import numpy as np
+        frame=np.zeros((480,800,3),dtype="uint8")
+        class DuplicateModel(Model):
+            def predict(self,image,**kwargs):
+                if image.shape[1]==800:
+                    coords=[[75,65,112,105]]
+                else:
+                    coords=[[75,65,112,105]]
+                return [type("Result",(),{"boxes":Boxes(coords),"names":self.names})()]
+        found,_,_=model_detections(
+            DuplicateModel(),frame,image_size=960,confidence=.12,
+            class_ids=[2],device="cpu",tracker=RoadTracker(),
+            detail_pass=True,detail_side=0)
+        self.assertEqual(len(found),1)
+
     def test_occasional_empty_detections_do_not_erase_future_matches(self):
         import numpy as np
         model=Model(); tracker=RoadTracker(max_age=5)
