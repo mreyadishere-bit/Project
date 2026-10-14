@@ -179,6 +179,9 @@ def model_detections(model,frame,*,image_size,confidence,class_ids,device,
                            device=device,verbose=False)[0]
         raw=False
     data=_extract_boxes(result,model)
+    if tracker is not None:
+        tracker.last_detail_added=0
+        tracker.last_detail_attempt=False
     if raw and detail_pass:
         height,width=frame.shape[:2]
         if height>=240 and width>=360:
@@ -190,6 +193,8 @@ def model_detections(model,frame,*,image_size,confidence,class_ids,device,
             crop=frame[:bottom,left:right]
             if crop.shape[0]>=64 and crop.shape[1]>=120:
                 try:
+                    if tracker is not None:
+                        tracker.last_detail_attempt=True
                     extra=model.predict(crop,imgsz=image_size,conf=confidence,
                                         classes=class_ids,device=device,verbose=False)[0]
                     discovered=_extract_boxes(extra,model,dx=left)
@@ -201,7 +206,10 @@ def model_detections(model,frame,*,image_size,confidence,class_ids,device,
                         d["bounds"][2]<=right+2 and
                         d["bounds"][1]>=-2 and
                         d["bounds"][3]<=bottom+2]
-                    data=_merge_multiscale(data,discovered)
+                    merged=_merge_multiscale(data,discovered)
+                    if tracker is not None:
+                        tracker.last_detail_added=len(merged)-len(data)
+                    data=merged
                 except (RuntimeError,ValueError,OSError,ImportError):
                     # Detail processing is a supplementary quality attempt.
                     # Full-frame observations remain valid if its tile fails.
