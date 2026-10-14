@@ -8,7 +8,7 @@ from streamlit.testing.v1 import AppTest
 
 
 class EndToEndResultsTests(unittest.TestCase):
-    def test_completed_results_and_clicked_three_d_concept_render_without_error(self):
+    def test_completed_results_does_not_fake_urban_road_improvement(self):
         with tempfile.TemporaryDirectory() as tmp:
             folder=Path(tmp)
             objects=folder/"objects.csv"
@@ -63,14 +63,14 @@ show_results(job,snap)
                 f"Main completed-video results could not render: {app.exception}")
             buttons=[b for b in app.button
                      if "Run hypothetical 3D crossing and signals" in b.label]
-            self.assertEqual(len(buttons),1,
-                             "Results must offer a user-clickable 3D simulation")
-            buttons[0].click().run(timeout=60)
-            self.assertFalse(app.exception,
-                f"3D concept fails after clicking result action: {app.exception}")
+            self.assertFalse(buttons,
+                "A generic straight-road simulator must not be misrepresented as a specific urban video improvement.")
             titles=[item.body for item in app.markdown]
             self.assertTrue(any("Events worth reviewing" in x for x in titles))
-            self.assertTrue(any("3D road intervention" in x for x in titles))
+            self.assertTrue(any("This exact road" in x for x in titles))
+            self.assertTrue(any("Recommendations supported by this footage" in x for x in titles))
+            self.assertFalse(any("3D road intervention" in x for x in titles),
+                             "Unsurveyed footage must not auto-render synthetic 3D road.")
 
 
 if __name__=="__main__":unittest.main()
