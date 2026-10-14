@@ -130,6 +130,20 @@ def build_road_pdf(snapshot,report,events,simulation=None,surveyed=None):
             f"{cal.get('length_m','?')} m long. "
             f"Camera pose fit RMSE: {surveyed.get('reprojection_error_px','?')} image pixels.",
             styles["body"]))
+        checkpoint=surveyed.get("independent_checkpoint")
+        if checkpoint and checkpoint.get("status")=="independently_checked":
+            story.append(_p(
+                f"Independent fifth-point check: passed; "
+                f"ground discrepancy {checkpoint.get('error_m','?')} m "
+                f"(permitted tolerance {checkpoint.get('tolerance_m','?')} m). "
+                "This checks only one additional point, not the whole road.",
+                styles["body"]))
+        else:
+            story.append(_p(
+                "No independent checkpoint available. Four-point camera fit "
+                "is not evidence of external geometric accuracy; "
+                "all world-unit estimates should remain provisional.",
+                styles["small"]))
         speed=measurement.get("median_track_speed_kmh")
         story.append(_p(
             f"Tracked objects with enough valid surveyed-plane samples: "
