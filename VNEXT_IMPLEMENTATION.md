@@ -172,6 +172,23 @@ suppresses duplicates, before the merged boxes reach the tracker.
 - Tests: source-coordinate restoration, preserving primary boxes,
   class-consistent duplicate merging, blank frames and stable tracker IDs.
 
+## October 14 — metric tracking continuity fixes
+
+The metric road-plane pipeline now **splits object tracks into independent
+episodes** if a reused tracker ID has a long observation gap, backward
+timestamps, or an implausible position jump. Old speed history and sampled
+paths are NOT carried into a new episode; its speed statistics require their
+own supporting frames. The surveyed-calibration UI labels the resulting
+quantity "continuous motion episodes", not unique vehicles, and reports how
+many temporal gaps and discontinuities were identified.
+
+A synthetic projected-camera regression test tracks one recycled ID across
+two clearly different ground-plane speeds and confirms that the output
+contains **two separately measured episodes** rather than an invented average.
+This improves reliability of already-calibrated measurements, but is not a
+claim of accurate monocular metric speeds without real surveyed geometry,
+an independent fifth reference point, and validated object detections.
+
 ## Explicitly NOT finished
 
 The site is NOT a photogrammetric digital twin of arbitrary footage. A monocular
