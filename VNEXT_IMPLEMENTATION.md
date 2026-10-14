@@ -118,6 +118,35 @@ corners, it predicts the fifth point's ground position and reports discrepancy.
 Tests: `tests/test_road_calibration_validation.py`, including consistency,
 inconsistency, invalid/out-of-patch and reused-corner cases.
 
+## Oct 14 follow-up: calibrated 3D first, independent measurement checks and robust counterfactuals
+
+- The main results now **prioritize the source-camera-aligned 3D road model**
+  once independently surveyed planar dimensions and corner positions are
+  available. The generic one-way crossing concept is clearly separated into
+  an explicitly hypothetical section.
+- An optional truly independent **fifth surveyed point** validates the
+  original four-corner homography beyond its fit anchors. Reusing an anchor
+  is rejected. Failed external checks reject the camera-plane validation.
+- Without that fifth point, physical speed and scene geometry are labeled
+  **provisional** rather than assumed accurate.
+- With an independently checked camera plane, the system can screen
+  repeated time-indexed **pedestrian/vehicle constant-velocity approach
+  candidates** from measured-plane tracked ground points. These are not
+  certified TTC/PET or confirmed near misses. Time, minimum predicted
+  ground-point distance and supporting observations can be inspected and
+  exported.
+- The signalized crossing simulation now uses **five paired random demand
+  trials** and presents the median changes and trial ranges for pedestrian
+  waits, vehicle journey time, queues, and throughput. It directly explains
+  modeled benefits and disadvantages; these are sensitivity checks, not
+  real-world crash prevention statistics.
+- PDF/JSON exports include whether surveyed road geometry had an independent
+  checkpoint and relevant reviewed approach candidate timestamps.
+
+This does **not** replace surveying or establish exact 3D scene geometry
+outside the planar patch. A fully autonomous 3D reconstruction still needs
+reliable depth/segmentation, camera intrinsics and road measurements.
+
 ## Explicitly NOT finished
 
 The site is NOT a photogrammetric digital twin of arbitrary footage. A monocular
