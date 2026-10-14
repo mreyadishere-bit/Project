@@ -56,8 +56,12 @@ def _automatic_settings():
     # All reasonable quality/detection options set automatically by hardware.
     return VideoSettings(
         model_name="yolo26m.pt" if gpu else "yolo26s.pt",
-        image_size=1280 if gpu else 960,
-        analysis_fps=10 if gpu else 5,
+        # Preserve the stronger small model on shared CPU but reduce
+        # redundant full-resolution inference and CPU quota exhaustion.
+        # Whole-video, time-spread sampling; never advertised as full FPS.
+        image_size=1280 if gpu else 832,
+        analysis_fps=10 if gpu else 3,
+        detail_scan_every=8 if gpu else 14,
         confidence=.12,
         tracker="traffic_botsort.yaml",
         save_video=True,
