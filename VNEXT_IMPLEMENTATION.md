@@ -98,6 +98,26 @@ physically meaningful km/h and sizes.
 9. Optionally use manually labeled CSV to calculate measured detection quality.
 10. Verify visual accuracy and model behavior independently in a real browser.
 
+## New independent calibration integrity check (2026-10-14)
+
+The expert Surveyed road calibration workflow now accepts an **optional
+independently measured fifth point** (both image pixels as percentages and
+surveyed ground X/Y in metres). After fitting the original four coplanar
+corners, it predicts the fifth point's ground position and reports discrepancy.
+
+- A checkpoint reused from any fitted corner is rejected.
+- A checkpoint beyond the surveyed rectangle is rejected.
+- An independent point disagreeing by more than 1.5 metres fails validation.
+- Without a fifth point, the UI explicitly labels metric readings provisional.
+- The fitted-corner PnP reprojection RMSE is no longer misleadingly presented
+  as independent evidence of true road-scale accuracy.
+- This check is only local validation of one flat planar patch. It does not
+  establish a complete 3D digital twin, camera ground truth or calibrated
+  geometry outside the surveyed region.
+
+Tests: `tests/test_road_calibration_validation.py`, including consistency,
+inconsistency, invalid/out-of-patch and reused-corner cases.
+
 ## Explicitly NOT finished
 
 The site is NOT a photogrammetric digital twin of arbitrary footage. A monocular
