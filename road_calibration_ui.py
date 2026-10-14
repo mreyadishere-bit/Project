@@ -170,6 +170,7 @@ def show_calibration(job,snapshot):
     if (result.get("independent_checkpoint") or {}).get("status")=="independently_checked":
         from calibrated_conflicts import ground_interaction_candidates
         possible_approaches=ground_interaction_candidates(tracks)
+        result["calibrated_interaction_review"]=possible_approaches
         st.markdown("#### Survey-scale pedestrian/vehicle approach review")
         if possible_approaches:
             st.warning("These are approximate constant-velocity ground-point approach candidates, NOT verified collisions, time-to-collision events or accidents prevented.")
