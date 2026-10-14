@@ -20,6 +20,9 @@ def validate_checkpoint(calibration: RoadCalibration, image_xy: tuple[float,floa
         raise ValueError("Finite coordinates are required.")
     if not all(0<=float(v)<=1 for v in image_xy):
         raise ValueError("Checkpoint image fractions must be within the video frame.")
+    if any(hypot(float(image_xy[0])-px,float(image_xy[1])-py)<.025
+           for px,py in calibration.points):
+        raise ValueError("The fifth point must be independent of all four calibration corners.")
     x,y=world_xy
     if not (0<=x<=calibration.width_m and 0<=y<=calibration.length_m):
         raise ValueError("Checkpoint must be within the independently measured road patch.")
