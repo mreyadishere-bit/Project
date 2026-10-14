@@ -149,6 +149,26 @@ def show_results(job,snap):
         source_size,source_mtime
     )
     review_items=review_moments(interaction_events,stationary_events)
+    if stationary_events:
+        item=stationary_events[0]
+        story["recommendations"].insert(0,{
+            "id":"stationary_vehicle_review",
+            "title":"Review possible stopping and curbside traffic activity",
+            "evidence":(
+                f"A {item['class']} track stayed near the same image point "
+                f"around {item['video_second']:.1f}s "
+                f"({item['frame_count']} supporting samples); "
+                "physical stationary status is not verified."
+            ),
+            "reason":"Repeated low image motion can indicate queuing or stopping, "
+                     "but camera perspective may also make distant vehicles look slow.",
+            "action":item["review_action"],
+            "verify":"Watch the exact source moment and survey roadway ownership, "
+                     "stopping rules, traffic direction and curb space before changing it.",
+            "priority":"Review","expected_benefit":"Not measured",
+            "confidence":"Recorded tracker image motion, needs manual verification",
+            "simulation_option":"inspection",
+        })
     st.markdown("### This exact road · Evidence and potential improvements")
     st.caption("The scene on both sides is taken from YOUR recorded road; only the "
                "evidence location is outlined. No invented highway, yellow circles, "
