@@ -167,6 +167,25 @@ def show_calibration(job,snapshot):
         st.warning("No tracks with enough reliable samples remained within the surveyed road patch. "
                    "No speed can be reported for this recording.")
     st.caption(tracks["basis"]["note"])
+    if (result.get("independent_checkpoint") or {}).get("status")=="independently_checked":
+        from calibrated_conflicts import ground_interaction_candidates
+        possible_approaches=ground_interaction_candidates(tracks)
+        st.markdown("#### Survey-scale pedestrian/vehicle approach review")
+        if possible_approaches:
+            st.warning("These are approximate constant-velocity ground-point approach candidates, NOT verified collisions, time-to-collision events or accidents prevented.")
+            for event in possible_approaches[:8]:
+                with st.container(border=True):
+                    st.write(f"**Review at {event['video_second']:.1f}s · Person {event['person_track']} / {event['vehicle_class']} {event['vehicle_track']}**")
+                    st.caption(f"{event['supporting_time_bins']} sampled moments · Projected closest approach {event['model_closest_point_distance_m']:.1f} metres in {event['model_time_to_closest_approach_s']:.1f} seconds, assuming unchanged velocities.")
+                    st.caption(event["interpretation"])
+        else:
+            st.info("No sustained calibrated constant-velocity approach candidate met the review thresholds. This is not proof of a safe road.")
+        st.download_button("Download measured-plane approach review (JSON)",
+                           json.dumps(possible_approaches,indent=2),
+                           file_name="calibrated-interaction-review.json",
+                           mime="application/json",key="calibrated_conflicts_"+job.id)
+    else:
+        st.caption("Physical ground-plane interaction extrapolation is unavailable until the independent fifth-point camera calibration check passes.")
     st.download_button("Export surveyed measurements (JSON)",
                        json.dumps(tracks,indent=2),file_name="calibrated-road-tracks.json",
                        mime="application/json",key="survey_export_"+job.id)
