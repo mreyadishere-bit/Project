@@ -66,9 +66,9 @@ show_results(job,snap)
             self.assertFalse(buttons,
                 "A generic straight-road simulator must not be misrepresented as a specific urban video improvement.")
             titles=[item.body for item in app.markdown]
-            self.assertTrue(any("Events worth reviewing" in x for x in titles))
-            self.assertTrue(any("This exact road" in x for x in titles))
-            self.assertTrue(any("Recommendations supported by this footage" in x for x in titles))
+            self.assertTrue(any("Moments worth reviewing" in x for x in titles))
+            self.assertTrue(any("Inspect the actual road" in x for x in titles))
+            self.assertTrue(any("Suggested next steps" in x for x in titles))
             self.assertFalse(any("3D road intervention" in x for x in titles),
                              "Unsurveyed footage must not auto-render synthetic 3D road.")
 
