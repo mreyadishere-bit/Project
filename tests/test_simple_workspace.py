@@ -16,7 +16,6 @@ class SimpleWorkspaceTests(unittest.TestCase):
         at=AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"),default_timeout=45)
         at.run(timeout=40)
         self.assertFalse(at.exception,str(at.exception))
-        from pathlib import Path
         source=(Path(__file__).resolve().parents[1] / "dr_traffic_app.py").read_text(encoding="utf-8")
         self.assertIn("st.file_uploader(",source)
         self.assertIn("Analyze traffic video",source)
