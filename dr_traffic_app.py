@@ -15,6 +15,7 @@ import uuid
 import streamlit as st
 
 from dr_traffic_engine import ReviewSettings, analyze_video, serialise_json
+from dr_traffic_voice import transcribe_voice
 
 st.set_page_config(
     page_title="Dr. Traffic | AI Traffic Review",
@@ -154,6 +155,11 @@ if st.session_state.dt_report is None:
                 "Choose a video", type=["mp4", "mov", "avi", "mkv", "m4v"],
                 help="Use footage that you have permission to analyze. Prefer a fixed camera.",
             )
+            voice_upload = st.file_uploader(
+                "Optional spoken instruction (Whisper · WAV, MP3, M4A, OGG)",
+                type=["wav", "mp3", "m4a", "ogg"], key="dt_voice",
+                help="Whisper is an optional local dependency. Voice never proves a violation.",
+            )
             if upload:
                 st.caption(f"{upload.name} · {upload.size/1048576:.1f} MB")
             st.markdown("**What gets checked**")
@@ -205,6 +211,22 @@ if st.session_state.dt_report is None:
 
                         with st.spinner("Detecting and tracking vehicles across the recording…"):
                             report, evidence = analyze_video(video_path, settings=config, progress=show_progress)
+                        if voice_upload is not None:
+                            voice_path = folder / ("voice" + Path(voice_upload.name).suffix.lower())
+                            voice_upload.seek(0)
+                            with voice_path.open("wb") as handle:
+                                shutil.copyfileobj(voice_upload, handle, length=1024 * 1024)
+                            try:
+                                with st.spinner("Transcribing the optional voice note…"):
+                                    report["voice_note"] = transcribe_voice(voice_path)
+                            except (RuntimeError, ValueError, OSError) as audio_error:
+                                report["voice_note"] = {
+                                    "status": "unavailable",
+                                    "explanation": str(audio_error),
+                                    "synchronized_to_video": False,
+                                }
+                            finally:
+                                voice_path.unlink(missing_ok=True)
                         st.session_state.dt_report = report
                         st.session_state.dt_evidence = evidence
                         st.session_state.dt_video_path = str(video_path)
@@ -252,6 +274,14 @@ else:
                 st.write("No tracked vehicle crossing met the current line-review rules. "
                          "This does not establish that there were no violations.")
             st.caption("The source video's original frames were sampled. Camera geometry, speed and traffic-light timing have not been independently measured.")
+            note = report.get("voice_note")
+            if note:
+                st.markdown("**Voice note**")
+                if note.get("transcript"):
+                    st.write(note["transcript"])
+                    st.caption("Intent: " + note.get("intent", "general_voice_note") + " · not synchronized with video.")
+                else:
+                    st.info(note.get("explanation", "Voice transcription is unavailable."))
         section("How the system reached its findings", "Traceable automated processing, with human verification required for legal interpretation.", "TRANSPARENCY")
         st.markdown(
             '<div class="dt-flow"><div class="dt-step"><strong>Object detection</strong><small>YOLO26</small></div>'
