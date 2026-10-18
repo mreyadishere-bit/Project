@@ -26,7 +26,7 @@ jobs:
       - name: Smoke test ByteTrack assignment dependency
         run: python -c "import lap, numpy as np; cost, rows, cols = lap.lapjv(np.array([[0.0, 1.0], [1.0, 0.0]])); assert list(rows) == [0, 1]"
       - name: Compile Python
-        run: python -m compileall -q app.py video_ui.py results_ui.py reconstruction_ui.py reconstruction.py traffic_geometry.py metric_scene.py traffic_metrics.py simulation_ui.py simulation_engine.py insight_engine.py ui_theme.py video_engine.py scene_intelligence.py road_tracking.py road_advice.py road_scenarios.py road_world3d.py road_compare3d.py video_comparison.py scene_background.py source_scene_evidence.py source_scene_view.py safety_interactions.py traffic_control_sim.py traffic_robustness.py traffic_control_view.py detection_qa.py road_report_pdf.py calibrated_measurements.py calibrated_conflicts.py road_calibration_validation.py road_calibration_ui.py calibrated_scene_view.py model_runtime.py simple_workspace.py simple_results.py stable_scene.py live_sources.py live_decoder.py public_cameras.py analysis.py database.py receiver.py routes.py weather.py
+        run: python -m compileall -q app.py dr_traffic_app.py dr_traffic_engine.py video_ui.py results_ui.py reconstruction_ui.py reconstruction.py traffic_geometry.py metric_scene.py traffic_metrics.py simulation_ui.py simulation_engine.py insight_engine.py ui_theme.py video_engine.py scene_intelligence.py road_tracking.py road_advice.py road_scenarios.py road_world3d.py road_compare3d.py video_comparison.py scene_background.py source_scene_evidence.py source_scene_view.py safety_interactions.py traffic_control_sim.py traffic_robustness.py traffic_control_view.py detection_qa.py road_report_pdf.py calibrated_measurements.py calibrated_conflicts.py road_calibration_validation.py road_calibration_ui.py calibrated_scene_view.py model_runtime.py simple_workspace.py simple_results.py stable_scene.py live_sources.py live_decoder.py public_cameras.py analysis.py database.py receiver.py routes.py weather.py
       - name: Verify 3D road geometry in actual Three.js
         run: |
           npm install --no-save --no-package-lock --prefix /tmp/smart-road-three three@0.170.0
@@ -34,20 +34,15 @@ jobs:
           node tests/road_motion_smoke.mjs
       - name: Run tests
         run: python -m unittest discover -s tests -v
-      - name: Smoke-test redesigned zero-settings hosted UI
+      - name: Smoke-test Dr Traffic main app
         env:
           SMART_ROAD_HOSTED: '1'
         run: |
           python - <<'PY'
           from streamlit.testing.v1 import AppTest
-          app = AppTest.from_file('app.py').run(timeout=40)
-          if app.exception:
-              raise AssertionError(f'Hosted UI error: {app.exception}')
-          from simple_workspace import video_tab
-          import inspect
-          assert 'st.file_uploader' in inspect.getsource(video_tab), 'One source uploader expected'
-          assert len(app.radio) == 0, 'No settings or navigation radios expected'
-          assert len(app.slider) == 0, 'No configuration sliders expected'
-          assert any('Analyze road' in b.label for b in app.button), 'Analyze action missing'
-          print('New minimal road upload workspace renders successfully')
+          app = AppTest.from_file('app.py').run(timeout=45)
+          assert not app.exception, f'Dr Traffic hosted UI error: {app.exception}'
+          assert any('Analyze traffic video' in b.label for b in app.button), 'Main review action missing'
+          assert any('Choose a video' in u.label for u in app.get('file_uploader')), 'Video uploader missing'
+          print('Dr Traffic primary website renders successfully')
           PY
