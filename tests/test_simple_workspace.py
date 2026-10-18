@@ -11,23 +11,16 @@ from road_compare3d import VIEWER
 
 
 class SimpleWorkspaceTests(unittest.TestCase):
-    def test_upload_is_only_configuration_in_home(self):
+    def test_new_primary_dr_traffic_home(self):
+        """The public app now intentionally presents Dr Traffic instead of Smart Road."""
         at=AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"),default_timeout=45)
-        import os
-        from unittest.mock import patch
-        with patch.dict(os.environ,{"SMART_ROAD_HOSTED":"1"}):
-            at.run(timeout=40)
+        at.run(timeout=40)
         self.assertFalse(at.exception,str(at.exception))
-        # Streamlit AppTest doesn't expose a public file_uploader interaction
-        # API in all supported versions; the upload call is source-inspected
-        # while the script is also executed by AppTest.
-        from simple_workspace import video_tab
-        import inspect
-        self.assertIn("st.file_uploader",inspect.getsource(video_tab))
-        self.assertEqual(len(at.slider),0)
-        self.assertEqual(len(at.radio),0)
-        self.assertTrue(at.title)
-        self.assertIn("Understand any road video",at.title[0].value)
+        from pathlib import Path
+        source=(Path(__file__).resolve().parents[1] / "dr_traffic_app.py").read_text(encoding="utf-8")
+        self.assertIn("st.file_uploader(",source)
+        self.assertIn("Analyze traffic video",source)
+        self.assertTrue(any("Analyze traffic video" in b.label for b in at.button))
 
     def test_hosted_auto_profiles_are_accepted_by_video_engine(self):
         """Both hardware profiles must be accepted before starting a worker."""
